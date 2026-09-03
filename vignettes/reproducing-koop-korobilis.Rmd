@@ -1,0 +1,151 @@
+---
+title: "Reproducing Koop and Korobilis (2014)"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Reproducing Koop and Korobilis (2014)}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 7,
+  fig.height = 4.5
+)
+```
+
+This package estimates the time varying parameter FAVAR of Koop and Korobilis
+(2014) and returns the financial conditions index (FCI) it defines. This
+vignette runs the two exercises the paper is built around, on the data it
+published, and checks the two claims that follow from them: that the index
+peaks in the fourth quarter of 2008, and that a version of it built only from
+data available at the time -- a real-time index -- tracks the fully-revised
+one closely enough to be usable for monitoring as it happened, not only in
+hindsight.
+
+```{r setup}
+library("fincond")
+data("koop")
+```
+
+`koop` holds the paper's 18 financial series and 96 real-time vintages of
+three macroeconomic variables; see `?koop`. The vintages are what the second
+exercise below runs over. The first uses the full sample, `macro[[96]]`.
+
+## The index
+
+```{r fci-fit}
+model <- create_fcimodel(y = koop$macro[[96]], x = koop$financial,
+                          p = 4, n = 1)
+model <- add_priors(model)
+model <- add_posterior_coefficients(model)
+
+index <- fci(model, sign_on = "vix")
+```
+
+`sign_on = "vix"` fixes the sign of the index so that it rises with the VIX --
+a high value means stressed conditions. That orientation is a convention, not
+an estimate: see `?fci`.
+
+```{r fci-plot}
+plot(index, main = "Financial conditions index", ylab = "Index", xlab = "")
+abline(h = 0, lty = "dashed", col = "grey40")
+```
+
+The paper's headline claim is about the ranking of episodes, not about any one
+value, so that is what to check. The eight highest readings:
+
+```{r fci-peaks}
+as_quarter <- function(x) {
+  yr <- floor(x)
+  qtr <- round((x - yr) * 4) + 1
+  paste0(yr, " Q", qtr)
+}
+
+ord <- order(-index)[1:8]
+data.frame(quarter = as_quarter(as.numeric(time(index))[ord]),
+           index = round(as.numeric(index)[ord], 2))
+```
+
+The peak is `r as_quarter(as.numeric(time(index)[which.max(index)]))`, ahead
+of 1982, 1974 and 1981 -- the same ordering reported in the paper and in
+`README.md`.
+
+## Factor loadings
+
+Each financial series has its own, time varying exposure to the index.
+`plot(model, which = "loadings")` reproduces the paper's plot of them; a
+loading that drifts toward zero is a series the index is no longer drawing on:
+
+```{r loadings-plot}
+plot(model, which = "loadings")
+```
+
+## A real-time index
+
+The estimator needs no posterior simulation, which is what lets it be run
+recursively: once per vintage, using only the data that vintage contains, in
+well under a second in total. That recursion is the paper's second exercise,
+and it is what the 96 vintages in `macro` are for.
+
+Two things change vintage to vintage. The macro block gets one quarter longer
+each time, by construction. The financial block does too, informally: several
+series -- the VIX among them -- start partway through the sample, so a series
+with fewer than two observations over an early vintage's span has to be left
+out of that vintage's model rather than passed in empty.
+
+```{r realtime-fit}
+n_vintages <- length(koop$macro)
+realtime <- data.frame(time = numeric(n_vintages), index = numeric(n_vintages))
+
+for (i in seq_len(n_vintages)) {
+  y_i <- koop$macro[[i]]
+
+  # Keep only the financial series that have started by this vintage.
+  span <- window(koop$financial, start = start(y_i), end = end(y_i))
+  x_i <- koop$financial[, colSums(!is.na(span)) >= 2, drop = FALSE]
+
+  m_i <- create_fcimodel(y = y_i, x = x_i, p = 4, n = 1)
+  m_i <- add_priors(m_i)
+  m_i <- add_posterior_coefficients(m_i)
+
+  # sp500 spans the whole sample, unlike vix, so it fixes the sign here.
+  index_i <- fci(m_i, sign_on = "sp500")
+  realtime$time[i] <- end(index_i)[1] + (end(index_i)[2] - 1) / 4
+  realtime$index[i] <- as.numeric(index_i)[length(index_i)]
+}
+```
+
+Each entry of `realtime$index` is a one-off reading: the value the index would
+have taken in that quarter, estimated with nothing later than that quarter's
+data. Lining those up against the same quarters of the full-sample index --
+built with hindsight, and re-signed on `sp500` for comparability -- shows how
+much the revisions matter:
+
+```{r realtime-compare}
+index_full <- fci(model, sign_on = "sp500")
+final <- as.numeric(index_full)[match(round(realtime$time, 4),
+                                       round(as.numeric(time(index_full)), 4))]
+
+start_yr <- floor(realtime$time[1])
+start_qtr <- round((realtime$time[1] - start_yr) * 4) + 1
+compared <- ts(cbind(realtime$index, final),
+               start = c(start_yr, start_qtr), frequency = 4)
+
+ts.plot(compared, col = c("firebrick", "grey30"), lwd = c(1.5, 1),
+        ylab = "Index", xlab = "",
+        main = "Real-time vs. full-sample index")
+legend("topleft", legend = c("Real time", "Full sample"),
+       col = c("firebrick", "grey30"), lwd = c(1.5, 1), bty = "n")
+```
+
+```{r realtime-cor}
+cor(realtime$index, final)
+```
+
+A correlation above `r round(cor(realtime$index, final), 2)` between a reading
+made in real time and its own fully-revised counterpart is the case for the
+index as a monitoring tool: a user watching it as it was published would have
+seen essentially the same signal as one looking back at it today.
