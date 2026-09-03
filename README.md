@@ -1,5 +1,10 @@
 # fincond
 
+<!-- badges: start -->
+[![R-CMD-check](https://github.com/franzmohr/fincond/actions/workflows/R-CMD-check.yaml/badge.svg)](https://github.com/franzmohr/fincond/actions/workflows/R-CMD-check.yaml)
+[![Codecov test coverage](https://codecov.io/gh/franzmohr/fincond/graph/badge.svg)](https://app.codecov.io/gh/franzmohr/fincond)
+<!-- badges: end -->
+
 Financial conditions indices from the time varying parameter FAVAR of
 Koop and Korobilis (2014).
 
