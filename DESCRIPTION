@@ -1,0 +1,27 @@
+Package: fincond
+Title: Financial Conditions Indices
+Version: 0.1.0
+Date: 2026-09-03
+Authors@R: person(c("Franz", "X."), "Mohr", email = "franz.x.mohr@outlook.com", role = c("aut", "cre"), comment = c(ORCID = "0009-0003-8890-7781"))
+Description: Estimates financial conditions indices from a time varying
+    parameter factor augmented vector autoregressive model, following Koop and
+    Korobilis (2014) <doi:10.1016/j.euroecorev.2014.07.002>. The estimator
+    replaces the priors on the innovation variances of a fully Bayesian model
+    with forgetting factors, so a whole index is obtained from two Kalman passes
+    rather than from posterior simulation. Model objects follow the conventions
+    of the 'bvartools' package and use its generics.
+License: GPL (>= 2)
+Depends:
+    R (>= 3.5),
+    bvartools (>= 1.0.0)
+Imports: grDevices, graphics, Rcpp (>= 1.0.12), stats
+LinkingTo: Rcpp, RcppArmadillo
+Suggests: knitr, rmarkdown, testthat (>= 3.0.0)
+SystemRequirements: GNU make
+LazyData: true
+Encoding: UTF-8
+URL: https://github.com/franzmohr/fincond
+BugReports: https://github.com/franzmohr/fincond/issues
+Remotes: franzmohr/bvartools
+Config/testthat/edition: 3
+Config/roxygen2/version: 8.0.0

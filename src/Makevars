@@ -1,0 +1,4 @@
+## Armadillo has to arrive as RcppArmadillo so that any random number the code
+## ever draws comes from R's generator rather than Armadillo's own.
+PKG_CPPFLAGS = -DARMA_NO_DEBUG
+PKG_LIBS = $(LAPACK_LIBS) $(BLAS_LIBS) $(FLIBS)
