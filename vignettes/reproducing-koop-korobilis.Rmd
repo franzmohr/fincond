@@ -27,6 +27,9 @@ hindsight.
 
 ```{r setup}
 library("fincond")
+
+set.seed(1234567)
+
 data("koop")
 ```
 
