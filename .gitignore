@@ -6,6 +6,11 @@ src/*.o
 src/*.so
 src/*.dll
 fincond_test.R
-data-raw
+# The raw sources are large and redistributable only from their publishers;
+# the scripts that turn them into the shipped datasets are not, and are kept.
+# Must exclude the contents rather than the directory: git cannot re-include
+# a file whose parent directory is itself excluded.
+data-raw/*
+!data-raw/*.R
 inst/doc
 vignettes/*.html
