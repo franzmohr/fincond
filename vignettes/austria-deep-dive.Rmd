@@ -228,6 +228,102 @@ round(oriented[c(1, 40, 80, nrow(oriented)), "spread_term"], 2)
 A constant-loading model would have had to carry the 2023 inversion at the
 weight the series earned in 2000. This one had already discounted it.
 
+## Reading the index by contribution
+
+The table above ranks inputs by how far they sat from their own averages, which
+says what was extreme rather than what the index was weighting. The term spread
+has just shown the difference: three standard deviations of inversion, and no
+effect. Weighting properly needs both quantities the filter itself uses -- the
+loading, and how precisely that series is measured, which is what
+`posterior$u_sigma` tracks. Weighting each observation that way and dividing by
+the total precision gives a set of contributions that add up to the index:
+
+```{r contributions}
+contributions <- function(m) {
+  l <- factor_loadings(m)
+  v <- m$posterior$u_sigma
+  orientation <- -sign(colMeans(l)[["esi"]])
+
+  # An absent series contributes nothing rather than propagating NA.
+  obs <- m$data$x
+  obs[is.na(obs)] <- 0
+
+  # Precision weights: loading over measurement variance, normalised by the
+  # total. This is the static generalised-least-squares view of the update
+  # step, so it omits the term the filter takes from the transition equation.
+  out <- ((orientation * l) / v) / rowSums((l^2) / v) * obs
+  out <- out / stats::sd(orientation * as.numeric(m$posterior$factors[, 1]))
+
+  colnames(out) <- colnames(m$data$x)
+  stats::ts(out, start = stats::start(m$posterior$factors), frequency = 4)
+}
+
+contrib <- contributions(model)
+
+# Worth checking before reading anything off it.
+round(cor(rowSums(contrib), as.numeric(index)), 3)
+```
+
+`r round(cor(rowSums(contributions(model)), as.numeric(index)), 3)` is close
+enough to read shares from, and not so close that the decimals should be
+trusted; the omitted transition term is what the gap is made of.
+
+```{r contributions-2022}
+moved <- function(cb, from, to) {
+  round(colMeans(window(cb, start = from, end = to)) -
+          colMeans(window(cb, start = c(2021, 1), end = c(2021, 4))), 2)
+}
+
+y2022 <- moved(contrib, c(2022, 1), c(2022, 4))
+
+sort(y2022, decreasing = TRUE)[1:8]
+sort(y2022)[1:4]
+```
+
+2022 is the year Austria's index crossed from very loose to neutral -- the 2021
+average is `r round(mean(window(index, start = c(2021, 1), end = c(2021, 4))), 2)`
+and the 2022 average `r round(mean(window(index, start = c(2022, 1), end = c(2022, 4))), 2)`
+-- and roughly half of that move is the survey balances. Consumer confidence
+alone fell about three standard deviations over the year. Geopolitical risk
+adds `r y2022[["gpr"]]`, which is the invasion of Ukraine entering an Austrian
+index through a global series, and corporate balance sheets most of the rest.
+
+The instructive entry is the one with the wrong sign. The short rate
+*subtracts* `r abs(y2022[["irate_short"]])` from the 2022 tightening, and the
+euro area's own index behaves the same way:
+
+```{r contributions-ea}
+ea_2022 <- moved(contributions(ea), c(2022, 1), c(2022, 4))
+
+sort(ea_2022, decreasing = TRUE)[1:5]
+sort(ea_2022)[1:3]
+```
+
+So the largest tightening cycle in the ECB's history enters both indices as a
+*loosening* contribution. That follows from the negative loading the sibling
+vignette explains: historically the ECB has cut into stress, so a rising policy
+rate is what accompanies good conditions. In 2022 that relationship inverted --
+hikes into a supply shock -- and a factor model estimated on the previous two
+decades has no way to know. The reading for 2022 is, if anything, too loose,
+and this is the clearest example in the vignette of a loading that is correct
+about the sample and wrong about the moment.
+
+The same decomposition puts the earlier drop-group result on a firmer footing.
+Against the same 2021 base, the recent episode is built differently:
+
+```{r contributions-recent}
+sort(moved(contrib, c(2023, 1), c(2025, 4)), decreasing = TRUE)[1:8]
+```
+
+Household credit now sits among the largest contributors, where in 2022 it
+barely registered: household debt contributed `r y2022[["hh_debt"]]` and
+long-term household lending `r y2022[["hh_loans_lt"]]`, against
+`r moved(contrib, c(2023, 1), c(2025, 4))[["hh_debt"]]` and
+`r moved(contrib, c(2023, 1), c(2025, 4))[["hh_loans_lt"]]` now -- four to five
+times the weight. That is the conclusion the group-dropping exercise reached,
+2023--25 being a credit event where 2022 was a confidence one, arrived at from
+the loadings rather than from refitting.
+
 ## What moves and what does not
 
 ```{r loadings-plot, fig.height = 9}
