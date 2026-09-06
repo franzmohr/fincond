@@ -1,0 +1,535 @@
+---
+title: "A deep dive on Austria"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{A deep dive on Austria}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 7,
+  fig.height = 4.5
+)
+```
+
+`vignette("euro-area-and-member-countries")` estimates eleven indices under one
+common definition, which is what makes them comparable and also what stops any
+one of them from being examined closely. This vignette does the opposite: one
+country, taken apart.
+
+Austria is the country to take apart, for two reasons that have nothing to do
+with its size. It is one of only two regions in `eamd` that carry a national
+block on top of the common columns -- house prices, a mortgage spread and two
+credit-to-GDP ratios -- which are the closest thing in this data to the
+`loanhpi` and `spread_30_mort` of Koop and Korobilis (2014), so Austria is where
+the paper's own block composition can very nearly be reproduced. And its
+financial history separates cleanly from the aggregate's: a severe 2008--09, a
+mild sovereign crisis, and a recent episode the euro area as a whole did not
+have.
+
+```{r setup}
+library("fincond")
+
+set.seed(1234567)
+
+data("eamd")
+
+at <- eamd$at
+```
+
+## The Austrian block
+
+```{r block}
+core <- colnames(eamd$ea$financial)
+national <- setdiff(colnames(at$financial), core)
+
+national
+c(financial = ncol(at$financial), quarters = nrow(at$macro))
+```
+
+Twenty-two common columns and `r length(national)` national ones. The common
+block is described in `?eamd`; what matters here is that three of its columns --
+`irate_short`, `spread_money` and `usd` -- are euro-area series sitting in an
+Austrian block, because the money market and the euro's dollar rate are not
+national quantities. Only `irate_long`, and through it `spread_term`, is
+Austria's own among the rates.
+
+The `r length(national)` national columns come from AustriaMacroData rather than
+from EA-MD-QD, and they are appended after the common ones, so `at$financial[,
+core]` recovers the strictly comparable set. Whether they earn their place is a
+question this vignette answers rather than assumes.
+
+## The index
+
+```{r fit}
+model <- create_fcimodel(y = at$macro, x = at$financial, p = 4, n = 1)
+model <- add_priors(model)
+model <- add_posterior_coefficients(model)
+
+index <- -fci(model, sign_on = "esi")
+```
+
+The orientation is worth one paragraph, because Austria is the case where the
+sibling vignette's caution does not bite. That vignette signs on `esi` and
+negates, because the VIX loads weakly or with the wrong sign in several members
+and so cannot anchor all eleven at once. In Austria it loads
+`r round(colMeans(factor_loadings(model))[["vix"]], 2)` with the right sign, and
+the paper's own convention returns exactly the same index:
+
+```{r anchor}
+round(colMeans(factor_loadings(model))[c("vix", "gpr", "esi")], 2)
+
+identical(as.numeric(-fci(model, sign_on = "esi")),
+          as.numeric(fci(model, sign_on = "vix")))
+```
+
+Signing on `esi` is kept below anyway, so that every number here can be read
+against the eleven-region tables without a mental sign flip. But in Austria it
+is a convenience rather than a necessity.
+
+```{r plot-index}
+plot(index, main = "Austrian financial conditions index", ylab = "Index",
+     xlab = "")
+abline(h = 0, lty = "dashed", col = "grey40")
+```
+
+```{r peaks}
+as_quarter <- function(x) {
+  yr <- floor(x + 1e-8)
+  paste0(yr, " Q", round((x - yr) * 4) + 1)
+}
+
+ord <- order(-index)[1:8]
+data.frame(quarter = as_quarter(as.numeric(time(index))[ord]),
+           index = round(as.numeric(index)[ord], 2))
+```
+
+The peak is `r as_quarter(as.numeric(time(index))[which.max(index)])`, and the
+quarters around it take three of the top four places. The exception is 2001 Q4,
+the dot-com bust and the months after September 2001 -- a genuine tightening in
+Austria, and the only pre-2008 quarter anywhere near the crisis readings.
+
+The rest of the list is the surprise. Four of the eight tightest quarters in
+twenty-six years are 2023 or later.
+
+## Austria is not a small Germany
+
+Austria's real economy is usually described through Germany, its largest
+trading partner. Its financial conditions do not work that way.
+
+```{r versus}
+fit_region <- function(d) {
+  m <- create_fcimodel(y = d$macro, x = d$financial, p = 4, n = 1)
+  m <- add_priors(m)
+  add_posterior_coefficients(m)
+}
+
+ea <- fit_region(eamd$ea)
+de <- fit_region(eamd$de)
+
+three <- ts.intersect(at = index,
+                      ea = -fci(ea, sign_on = "esi"),
+                      de = -fci(de, sign_on = "esi"))
+
+round(cor(three), 2)
+```
+
+Austria tracks the euro area aggregate at
+`r round(cor(three[, "at"], three[, "ea"]), 2)` and Germany at only
+`r round(cor(three[, "at"], three[, "de"]), 2)`. That is not Austria being
+unusual -- it is Germany, whose index is the least like the aggregate of the
+eleven, for reasons the sibling vignette gives. Austria sits where a small,
+open, bank-financed member of a currency union should sit: close to the common
+cycle.
+
+```{r plot-three}
+ts.plot(three, col = c("firebrick", "grey40", "steelblue"),
+        lwd = c(1.9, 1.3, 1.3), ylab = "Index", xlab = "")
+abline(h = 0, lty = "dashed", col = "grey60")
+legend("topleft", legend = c("Austria", "Euro area", "Germany"),
+       col = c("firebrick", "grey40", "steelblue"), lwd = 1.6, bty = "n")
+```
+
+```{r episodes}
+episode <- function(from, to) {
+  round(colMeans(window(three, start = from, end = to)), 2)
+}
+
+t(rbind("2000-01 dot-com"    = episode(c(2000, 2), c(2001, 4)),
+        "2006-07 boom"       = episode(c(2006, 1), c(2007, 4)),
+        "2008-09 crisis"     = episode(c(2008, 4), c(2009, 3)),
+        "2011-13 sovereign"  = episode(c(2011, 3), c(2013, 4)),
+        "2020 pandemic"      = episode(c(2020, 1), c(2020, 4)),
+        "2021 recovery"      = episode(c(2021, 1), c(2021, 4)),
+        "2022 invasion"      = episode(c(2022, 1), c(2022, 4)),
+        "2023-25 tightening" = episode(c(2023, 1), c(2025, 4))))
+```
+
+Two rows carry the Austrian story. In 2011--13 Austria averages
+`r episode(c(2011, 3), c(2013, 4))[["at"]]` against the euro area's
+`r episode(c(2011, 3), c(2013, 4))[["ea"]]`: the sovereign crisis was a
+periphery event, and Austria was not in the periphery -- whatever its banks'
+exposure to central and eastern Europe was thought to imply at the time.
+
+And in 2023--25 the ordering reverses: Austria at
+`r episode(c(2023, 1), c(2025, 4))[["at"]]`, the euro area at
+`r episode(c(2023, 1), c(2025, 4))[["ea"]]`, Germany at
+`r episode(c(2023, 1), c(2025, 4))[["de"]]`. That is the one episode in the
+sample where Austria is decisively the tightest of the three, and it is not a
+spike but a plateau.
+
+## The recent tightening
+
+```{r recent}
+round(window(index, start = c(2022, 1)), 2)
+```
+
+The index crosses zero in 2022 Q3 and is above one in ten of the eleven
+quarters from 2023 Q2. That is the longest stretch of tight readings in the
+sample by some way -- the crisis managed three consecutive quarters above one,
+2001 Q4 managed a single one -- and unlike 2008--09 there was no banking
+failure to point at. So it is worth asking what the factor is actually reading.
+
+```{r drivers}
+standardised <- ts(scale(at$financial), start = start(at$financial),
+                   frequency = 4)
+
+recent <- colMeans(window(standardised, start = c(2023, 1), end = c(2025, 4)),
+                   na.rm = TRUE)
+round(sort(recent), 2)
+```
+
+Consumer confidence, industrial confidence and the headline sentiment index all
+sit more than a standard deviation below their own averages, and so does
+long-term household lending; household debt growth, both credit-to-GDP ratios
+and house price growth follow. Construction confidence is the one survey that
+does not, at `r round(recent[["conf_constr"]], 2)`. The tightening cycle shows
+up not in the policy rate itself -- `irate_short` is a first difference, so a
+completed cycle of hikes returns it to around zero -- but in what it did to
+credit and to confidence.
+
+The interesting non-driver is the term spread. It is the second most extreme
+input in that table, at `r round(recent[["spread_term"]], 2)` standard
+deviations: an inverted curve, of the kind that usually dominates a stress
+index. It contributes almost nothing here, because its loading had already
+gone:
+
+```{r term-spread}
+loadings <- factor_loadings(model)
+oriented <- -sign(colMeans(loadings)[["esi"]]) * loadings
+
+round(oriented[c(1, 40, 80, nrow(oriented)), "spread_term"], 2)
+```
+
+A constant-loading model would have had to carry the 2023 inversion at the
+weight the series earned in 2000. This one had already discounted it.
+
+## What moves and what does not
+
+```{r loadings-plot, fig.height = 9}
+plot(model, which = "loadings")
+```
+
+Twenty-six paths are more than can be read at once, so the compact version is
+the average loading by era, signed the way the index is:
+
+```{r loadings-era}
+era <- function(from, to) {
+  round(colMeans(window(oriented, start = from, end = to)), 2)
+}
+
+t(rbind("2000-07" = era(c(2000, 2), c(2007, 4)),
+        "2008-12" = era(c(2008, 1), c(2012, 4)),
+        "2013-19" = era(c(2013, 1), c(2019, 4)),
+        "2023-25" = era(c(2023, 1), c(2025, 4))))
+```
+
+Half of these loadings are negative, so a signed difference would confuse a
+negative loading growing with a positive one shrinking. The change in magnitude
+is what says whether a series gained weight in the index:
+
+```{r loadings-drift}
+drift <- abs(oriented[nrow(oriented), ]) - abs(oriented[1, ])
+
+round(sort(drift, decreasing = TRUE)[1:5], 2)
+round(sort(drift)[1:5], 2)
+```
+
+The drift is modest everywhere -- this is a factor that has kept its shape --
+but it is not zero, and it points one way. The survey balances gain: industrial
+confidence by `r round(drift[["conf_ind"]], 2)` and `esi` by
+`r round(drift[["esi"]], 2)`. Corporate credit gains with them. What loses
+weight is household credit, the term spread and the dollar rate. Over
+twenty-six years the Austrian factor became more of a
+survey-and-corporate-credit factor and less of a household-credit-and-rates
+one.
+
+## What the index is made of
+
+Loadings say what each series contributes on average. They do not say what the
+index would look like without it, which is a different question when
+twenty-six correlated series share one factor. Refitting without each series in
+turn:
+
+```{r drop-one}
+drop_one <- sapply(colnames(at$financial), function(series) {
+  keep <- setdiff(colnames(at$financial), series)
+  m <- create_fcimodel(y = at$macro, x = at$financial[, keep], p = 4, n = 1)
+  m <- add_posterior_coefficients(add_priors(m))
+  anchor <- if ("esi" %in% keep) "esi" else "conf_ind"
+  cor(as.numeric(-fci(m, sign_on = anchor)), as.numeric(index))
+})
+
+round(sort(drop_one)[1:8], 3)
+```
+
+No single series matters much: drop the most influential one, `esi`, and the
+index still correlates `r round(min(drop_one), 2)` with the full one. That is
+the reassuring answer and also the uninformative one, because twenty-six
+correlated series can each be individually redundant while a whole group of
+them is not. Dropping groups is the sharper test:
+
+```{r drop-group}
+groups <- list(
+  surveys     = c("conf_cons", "conf_ind", "conf_constr", "esi"),
+  credit      = c("hh_debt", "hh_loans_lt", "hh_loans_st", "nfc_debt",
+                  "nfc_loans_lt", "bank_loans_lt", "credit_gdp_hh",
+                  "credit_gdp_nfc"),
+  prices      = c("equity", "house_prices", "reer", "usd"),
+  rates       = c("irate_short", "irate_long", "spread_term", "spread_money",
+                  "spread_mortgage"),
+  uncertainty = c("gpr", "vix"),
+  national    = national)
+
+# The anchor has to survive the drop, so take the first available series that
+# rises with loosening; if every one of them goes, anchor on gpr, which rises
+# with stress, and do not negate.
+orient <- function(m, keep) {
+  loose <- intersect(c("esi", "conf_ind", "hh_debt", "nfc_assets"), keep)
+  if (length(loose) > 0) -fci(m, sign_on = loose[1]) else fci(m, sign_on = "gpr")
+}
+
+summarise <- function(i) {
+  data.frame(cor = round(cor(as.numeric(i), as.numeric(index)), 3),
+             peak = as_quarter(as.numeric(time(i))[which.max(i)]),
+             crisis = round(mean(window(i, start = c(2008, 4),
+                                        end = c(2009, 3))), 2),
+             recent = round(mean(window(i, start = c(2023, 1),
+                                        end = c(2025, 4))), 2))
+}
+
+without <- function(series) {
+  keep <- setdiff(colnames(at$financial), series)
+  m <- create_fcimodel(y = at$macro, x = at$financial[, keep], p = 4, n = 1)
+  summarise(orient(add_posterior_coefficients(add_priors(m)), keep))
+}
+
+dropped <- do.call(rbind, lapply(groups, without))
+rbind(dropped, "(none)" = summarise(index))
+```
+
+Two groups are load-bearing and four are not.
+
+Without the surveys the index is a different series: the correlation falls to
+`r dropped["surveys", "cor"]`, the 2008--09 average more than halves, and the
+peak moves to 2001 Q4. A factor extracted from Austrian balance sheets, rates
+and asset prices alone does not identify the financial crisis as the country's
+worst quarter. That is a real dependence, and it is the caveat to carry away
+from this vignette: the Austrian index is to a substantial degree a confidence
+index.
+
+Without credit the peak survives but the recent episode largely does not --
+2023--25 falls to `r dropped["credit", "recent"]` against a full-block
+`r round(mean(window(index, start = c(2023, 1), end = c(2025, 4))), 2)`. The two
+episodes are made of different things. 2008--09 is legible in surveys and asset
+prices; 2023--25 is a credit event, and an index without a credit block would
+have understated it.
+
+Dropping the national block moves the correlation to
+`r dropped["national", "cor"]`, which is the honest answer to the question the
+first section left open: the four Austrian series do not change the index. They
+are worth having as a diagnostic -- the house price and mortgage spread paths
+are what let the previous section say the property correction is not what the
+factor was reading -- but nobody should expect the index to move because they
+are there.
+
+## A second factor
+
+```{r two-factor}
+model2 <- create_fcimodel(y = at$macro, x = at$financial, p = 4, n = 2)
+model2 <- add_posterior_coefficients(add_priors(model2))
+
+first <- -fci(model2, factor = 1, sign_on = "esi")
+second <- fci(model2, factor = 2)
+
+round(c(first_vs_index = cor(first, index),
+        second_vs_index = cor(second, index)), 3)
+
+round(sort(abs(colMeans(factor_loadings(model2, factor = 2))),
+           decreasing = TRUE)[1:6], 2)
+```
+
+The first factor is the one-factor index back again. The second is orthogonal
+to it and loads on bank lending, equity, the VIX, the dollar and the effective
+exchange rate -- a market-and-external component that the single-factor index
+merges into the domestic credit cycle. Whether separating it is worth doing
+depends on the use; for reproducing the index of Koop and Korobilis (2014),
+`n = 1` is the specification, and nothing here suggests it loses the main
+signal.
+
+## Robustness
+
+The forgetting factors are the estimator's only real tuning parameters, and the
+sample is short enough that they deserve a check rather than a default.
+
+```{r decay}
+grid <- list(
+  "Koop-Korobilis" = list(u = 0.96, v = 0.96, lambda = 0.99, beta = 0.99),
+  "no drift"       = list(u = 0.96, v = 0.96, lambda = 1,    beta = 1),
+  "fast loadings"  = list(u = 0.96, v = 0.96, lambda = 0.95, beta = 0.99),
+  "slow variances" = list(u = 0.99, v = 0.99, lambda = 0.99, beta = 0.99))
+
+do.call(rbind, lapply(grid, function(d) {
+  m <- create_fcimodel(y = at$macro, x = at$financial, p = 4, n = 1)
+  i <- -fci(add_posterior_coefficients(add_priors(m, decay = d)),
+            sign_on = "esi")
+  data.frame(cor = round(cor(as.numeric(i), as.numeric(index)), 3),
+             peak = as_quarter(as.numeric(time(i))[which.max(i)]),
+             peak_value = round(max(i), 2))
+}))
+```
+
+Every setting returns the same peak and a correlation of at least 0.99 with the
+baseline, including the one that switches time variation off entirely. The
+Austrian index is not an artefact of the discounting.
+
+## A recursive index
+
+The paper's second exercise re-estimates the index once per real-time vintage.
+`eamd` has no vintages, so what follows is the weaker version: an expanding
+window that uses today's revised figures throughout. It answers whether the
+index needs data from after the quarter it is dating. It says nothing about how
+much revisions would move it.
+
+```{r recursive}
+ends <- as.numeric(time(window(at$macro, start = c(2006, 1))))
+out <- numeric(length(ends))
+
+for (i in seq_along(ends)) {
+  yr <- floor(ends[i] + 1e-8)
+  qtr <- round((ends[i] - yr) * 4) + 1
+
+  x_i <- window(at$financial, end = c(yr, qtr))
+  # Keep only the series that have started by this quarter.
+  x_i <- x_i[, colSums(!is.na(x_i)) >= 2, drop = FALSE]
+
+  m_i <- create_fcimodel(y = window(at$macro, end = c(yr, qtr)), x = x_i,
+                         p = 4, n = 1)
+  m_i <- add_posterior_coefficients(add_priors(m_i))
+
+  # Not standardised: each fit has its own sample, so its own mean and
+  # variance, and rescaling every one separately would put the readings on
+  # eighty different scales.
+  i_i <- -fci(m_i, sign_on = "esi", standardize = FALSE)
+  out[i] <- as.numeric(i_i)[length(i_i)]
+}
+
+recursive <- ts(out, start = c(2006, 1), frequency = 4)
+```
+
+Each entry is a one-off reading: the value the index took in that quarter,
+estimated with nothing later in the sample.
+
+```{r recursive-compare}
+full <- -fci(model, sign_on = "esi", standardize = FALSE)
+compared <- ts.intersect(recursive, full)
+
+round(cor(compared[, 1], compared[, 2]), 3)
+```
+
+```{r recursive-plot}
+scale_it <- function(v) (v - mean(v)) / stats::sd(v)
+plotted <- ts(cbind(scale_it(compared[, 1]), scale_it(compared[, 2])),
+              start = start(compared), frequency = 4)
+
+ts.plot(plotted, col = c("firebrick", "grey30"), lwd = c(1.8, 1),
+        ylab = "Index", xlab = "",
+        main = "Expanding window vs. full sample")
+legend("topleft", legend = c("Expanding window", "Full sample"),
+       col = c("firebrick", "grey30"), lwd = c(1.8, 1), bty = "n")
+```
+
+`r round(cor(compared[, 1], compared[, 2]), 3)` puts Austria near the top of the
+eleven -- `vignette("euro-area-and-member-countries")` computes the full
+ranking -- and the reason is visible in the episode table above rather than in
+anything about Austrian data quality. Austria's largest event falls squarely
+inside the recursion's own window, so even a model fitted only to data up to
+2009 has already seen what calibrates the full-sample index. Greece sits at the
+bottom of that ranking for the mirror-image reason: a recursion beginning in
+2006 had not yet met the crisis that defines the Greek factor. Read this number
+as a statement about where Austria's crisis sits in its sample, not as a
+general claim about the estimator.
+
+## What the index is for
+
+An index of financial conditions should say something about the real economy
+that the real data have not said yet.
+
+```{r predictive}
+predictive <- function(target, h) {
+  d <- as.data.frame(na.omit(stats::ts.intersect(
+    lead = stats::lag(at$macro[, target], h),
+    own = at$macro[, target],
+    fci = index)))
+  own_only <- summary(stats::lm(lead ~ own, data = d))$r.squared
+  with_fci <- summary(stats::lm(lead ~ own + fci, data = d))
+  c(horizon = h,
+    r2_own = round(own_only, 3),
+    r2_with_fci = round(with_fci$r.squared, 3),
+    coef_fci = round(stats::coef(with_fci)[3, 1], 2))
+}
+
+t(sapply(c(1, 2, 4, 8), predictive, target = "u"))
+```
+
+Tighter conditions today mean higher Austrian unemployment later, at every
+horizon tried. The gain is largest where it is most useful: a year ahead, the
+unemployment rate's own persistence explains
+`r predictive("u", 4)[["r2_own"]]` of the variance and the index takes that to
+`r predictive("u", 4)[["r2_with_fci"]]`. At two years the persistence is gone
+altogether -- own-lag `r predictive("u", 8)[["r2_own"]]` -- and the index
+accounts for nearly all of the very little that is left.
+
+```{r predictive-y}
+t(sapply(c(1, 2, 4), predictive, target = "y"))
+```
+
+For output growth the sign reverses, as it should, since growth is the outcome
+you want more of: tighter conditions now, weaker growth one and two quarters
+out. By a year ahead there is nothing left to find in either direction, and the
+fits are small throughout because a quarterly growth rate is close to
+unforecastable at any horizon by anything -- which is not a defect of the
+index.
+
+Two caveats, the same two the sibling vignette gives. These are in-sample fits,
+not forecasts: nothing here was estimated without the data it is scored on. And
+the horizons overlap, so the regressions violate the assumptions their standard
+errors would need, which is why none are reported. Read the tables as
+descriptions of co-movement, and see Koop and Korobilis (2014, sec. 5) for the
+out-of-sample version of the question.
+
+## References
+
+Barigozzi, M., & Lissona, C. EA-MD-QD: Large euro area and euro member countries
+datasets for macroeconomic research.
+<https://github.com/BarigozziMatteo/EA-MD-QD>
+
+Caldara, D., & Iacoviello, M. (2022). Measuring geopolitical risk. *American
+Economic Review, 112*(4), 1194--1225.
+
+Koop, G., & Korobilis, D. (2014). A new index of financial conditions. *European
+Economic Review, 71*, 101--116.
