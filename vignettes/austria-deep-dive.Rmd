@@ -416,33 +416,35 @@ index needs data from after the quarter it is dating. It says nothing about how
 much revisions would move it.
 
 ```{r recursive}
-ends <- as.numeric(time(window(at$macro, start = c(2006, 1))))
-out <- numeric(length(ends))
+origins <- as.numeric(time(window(at$macro, start = c(2006, 1))))
 
-for (i in seq_along(ends)) {
-  yr <- floor(ends[i] + 1e-8)
-  qtr <- round((ends[i] - yr) * 4) + 1
+vintage <- lapply(origins, function(o) {
+  yr <- floor(o + 1e-8)
+  qtr <- round((o - yr) * 4) + 1
 
-  x_i <- window(at$financial, end = c(yr, qtr))
+  x_o <- window(at$financial, end = c(yr, qtr))
   # Keep only the series that have started by this quarter.
-  x_i <- x_i[, colSums(!is.na(x_i)) >= 2, drop = FALSE]
+  x_o <- x_o[, colSums(!is.na(x_o)) >= 2, drop = FALSE]
 
-  m_i <- create_fcimodel(y = window(at$macro, end = c(yr, qtr)), x = x_i,
+  m_o <- create_fcimodel(y = window(at$macro, end = c(yr, qtr)), x = x_o,
                          p = 4, n = 1)
-  m_i <- add_posterior_coefficients(add_priors(m_i))
+  m_o <- add_posterior_coefficients(add_priors(m_o))
 
   # Not standardised: each fit has its own sample, so its own mean and
   # variance, and rescaling every one separately would put the readings on
   # eighty different scales.
-  i_i <- -fci(m_i, sign_on = "esi", standardize = FALSE)
-  out[i] <- as.numeric(i_i)[length(i_i)]
-}
+  -fci(m_o, sign_on = "esi", standardize = FALSE)
+})
 
-recursive <- ts(out, start = c(2006, 1), frequency = 4)
+# The whole filtered path is kept rather than only its last value, because the
+# next section needs the index history each vintage would have had.
+last_of <- function(z) as.numeric(z)[length(z)]
+recursive <- ts(vapply(vintage, last_of, numeric(1)), start = c(2006, 1),
+                frequency = 4)
 ```
 
-Each entry is a one-off reading: the value the index took in that quarter,
-estimated with nothing later in the sample.
+Each entry of `recursive` is a one-off reading: the value the index took in that
+quarter, estimated with nothing later in the sample.
 
 ```{r recursive-compare}
 full <- -fci(model, sign_on = "esi", standardize = FALSE)
@@ -515,12 +517,168 @@ fits are small throughout because a quarterly growth rate is close to
 unforecastable at any horizon by anything -- which is not a defect of the
 index.
 
-Two caveats, the same two the sibling vignette gives. These are in-sample fits,
-not forecasts: nothing here was estimated without the data it is scored on. And
-the horizons overlap, so the regressions violate the assumptions their standard
-errors would need, which is why none are reported. Read the tables as
-descriptions of co-movement, and see Koop and Korobilis (2014, sec. 5) for the
-out-of-sample version of the question.
+Both tables describe co-movement rather than forecasting skill: nothing in them
+was estimated without the data it is scored on, and the horizons overlap, so
+the standard errors those regressions would need do not hold. The next section
+does the version that is not vulnerable to either objection.
+
+## Out of sample
+
+The vintages of the previous section make a real forecasting exercise possible,
+because they contain the index history a user would have had at each date. The
+rule is that nothing estimated at origin `t` may touch data after `t` -- which
+covers the regression coefficients as well as the index, since a regression
+fitted on the full sample would leak the future just as surely as a full-sample
+factor would.
+
+```{r oos-forecast}
+forecasts <- function(target, h) {
+  y <- at$macro[, target]
+  stamp <- as.numeric(time(y))
+
+  rows <- lapply(seq_along(origins), function(k) {
+    path <- vintage[[k]]
+    realised <- which(abs(stamp - (origins[k] + h / 4)) < 1e-6)
+    if (length(realised) == 0) return(NULL)
+
+    # Everything below sees only data through this origin.
+    seen <- window(y, end = end(path))
+    d <- as.data.frame(na.omit(stats::ts.intersect(
+      lead = stats::lag(seen, h), own = seen, fci = path)))
+    if (nrow(d) < 12) return(NULL)
+
+    now <- data.frame(own = last_of(seen), fci = last_of(path))
+    predict_with <- function(f) {
+      as.numeric(stats::predict(stats::lm(f, data = d), newdata = now))
+    }
+
+    data.frame(origin = origins[k], actual = as.numeric(y)[realised],
+               bench = predict_with(lead ~ own),
+               fci = predict_with(lead ~ own + fci))
+  })
+
+  do.call(rbind, rows)
+}
+```
+
+The benchmark is the same own-lag regression the in-sample tables used, so the
+comparison isolates what the index adds. Two statistics summarise a set of
+forecasts. The ratio of root mean squared errors is what a user would have
+experienced. The second needs a word of explanation:
+
+```{r oos-score}
+# Long-run variance, since h-step forecasts overlap for h > 1.
+hac <- function(z, lag) {
+  n <- length(z)
+  z <- z - mean(z)
+  v <- sum(z^2) / n
+  for (l in seq_len(lag)) {
+    v <- v + 2 * (1 - l / (lag + 1)) * sum(z[(l + 1):n] * z[1:(n - l)]) / n
+  }
+  v
+}
+
+score <- function(target, h) {
+  f <- forecasts(target, h)
+  e_bench <- f$actual - f$bench
+  e_fci <- f$actual - f$fci
+
+  # Clark and West (2007). A plain Diebold-Mariano test is undersized when the
+  # models are nested, as these are: under the null the larger model estimates
+  # a coefficient that is truly zero, and the noise in doing so inflates its
+  # squared error. The last term subtracts exactly that penalty.
+  adjusted <- e_bench^2 - (e_fci^2 - (f$bench - f$fci)^2)
+
+  c(h = h, n = nrow(f),
+    rmse_bench = round(sqrt(mean(e_bench^2)), 3),
+    rmse_fci = round(sqrt(mean(e_fci^2)), 3),
+    ratio = round(sqrt(mean(e_fci^2)) / sqrt(mean(e_bench^2)), 3),
+    cw = round(mean(adjusted) /
+                 sqrt(hac(adjusted, max(h - 1, 0)) / length(adjusted)), 2))
+}
+```
+
+```{r oos-u}
+t(sapply(c(1, 2, 4, 8), score, target = "u"))
+```
+
+A ratio below one is the index winning. For unemployment it wins at one, two
+and four quarters, by up to `r round(100 * (1 - score("u", 2)[["ratio"]]))`
+per cent of root mean squared error at two quarters, with Clark-West
+statistics around three. At two years it loses, and the statistic is
+`r score("u", 8)[["cw"]]` -- no evidence of anything.
+
+The four-quarter row is the one to read carefully, because the two columns
+disagree: a `r score("u", 4)[["ratio"]]` ratio is a small gain, while a
+Clark-West statistic of `r score("u", 4)[["cw"]]` is a confident one. They are
+answering different questions. The statistic asks whether the index belongs in
+the population regression, and corrects for the estimation noise a user
+actually has to pay; the ratio reports what that user got after paying it. At
+one and two quarters the signal is large enough to clear its own estimation
+cost. At four it is real but barely does.
+
+```{r oos-y}
+t(sapply(c(1, 2, 4), score, target = "y"))
+t(sapply(c(1, 2, 4), score, target = "p"))
+```
+
+For output growth and inflation there is nothing to speak of. Two of the six
+ratios dip below one, both by less than a point and a half, and the largest
+Clark-West statistic is `r score("p", 4)[["cw"]]`, for inflation a year out --
+which would be marginal on its own and is one row in six. The in-sample
+table's
+`r predictive("y", 1)[["r2_own"]]` to `r predictive("y", 1)[["r2_with_fci"]]`
+gain in output-growth fit does not survive being asked to forecast, which is
+the ordinary fate of in-sample gains that size and the reason this section
+exists.
+
+A gain concentrated in two crises would be a different claim from a gain earned
+throughout, so it is worth splitting:
+
+```{r oos-episodes}
+f <- forecasts("u", 2)
+gain <- (f$actual - f$bench)^2 - (f$actual - f$fci)^2
+
+crisis <- f$origin >= 2008 & f$origin < 2010
+pandemic <- f$origin >= 2020 & f$origin < 2021
+calm <- !crisis & !pandemic
+
+round(c(share_2008_09 = sum(gain[crisis]) / sum(gain),
+        share_2020 = sum(gain[pandemic]) / sum(gain)), 2)
+
+round(c(n = sum(calm),
+        ratio_excluding_both = sqrt(mean((f$actual - f$fci)[calm]^2)) /
+          sqrt(mean((f$actual - f$bench)[calm]^2))), 3)
+```
+
+It is not a crisis artefact. The 2008--09 origins contribute
+`r round(100 * sum(gain[crisis]) / sum(gain))` per cent of the total gain and
+the 2020 origins `r round(100 * sum(gain[pandemic]) / sum(gain))` per cent,
+between them about a quarter of it from about a sixth of the sample. Drop both
+and the ratio over the remaining `r sum(calm)` quarters is
+`r round(sqrt(mean((f$actual - f$fci)[calm]^2)) / sqrt(mean((f$actual - f$bench)[calm]^2)), 3)`
+-- slightly better than the full-sample figure, not worse.
+
+```{r oos-plot}
+ts.plot(ts(cumsum(gain), start = c(2006, 1), frequency = 4),
+        col = "firebrick", lwd = 1.8, ylab = "Cumulative squared-error gain",
+        xlab = "", main = "Where the forecast gain accrues (u, h = 2)")
+abline(h = 0, lty = "dashed", col = "grey40")
+```
+
+The cumulative line is the honest summary of the exercise. A line that jumped
+once and then flattened would mean an index that called one crisis and was
+otherwise idle. This one climbs through the calm years as well, which is the
+stronger result and the harder one to get.
+
+Two limits remain, and neither is repairable with this data. There are no
+vintages, so the macro variables are the revised ones throughout: a genuine
+real-time user would have had worse `y`, `p` and `u` than these regressions
+were given, and the paper's own real-time exercise -- which `eamd` cannot
+support -- is the one that settles how much that matters. And a single country
+over eighty quarters is a small evaluation sample, so read the Clark-West
+statistics as indicative rather than decisive. See Koop and Korobilis (2014,
+sec. 5) for the fuller treatment.
 
 ## References
 
@@ -530,6 +688,10 @@ datasets for macroeconomic research.
 
 Caldara, D., & Iacoviello, M. (2022). Measuring geopolitical risk. *American
 Economic Review, 112*(4), 1194--1225.
+
+Clark, T. E., & West, K. D. (2007). Approximately normal tests for equal
+predictive accuracy in nested models. *Journal of Econometrics, 138*(1),
+291--311.
 
 Koop, G., & Korobilis, D. (2014). A new index of financial conditions. *European
 Economic Review, 71*, 101--116.
