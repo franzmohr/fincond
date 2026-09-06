@@ -32,3 +32,122 @@
 #' \doi{10.1016/j.euroecorev.2014.07.002}
 #'
 "koop"
+
+
+#' Euro area and member country data
+#'
+#' Macroeconomic and financial variables for the euro area and its ten largest
+#' member countries, built to the design of \code{\link{koop}} so that the index
+#' of Koop and Korobilis (2014) can be estimated for each of them on comparable
+#' data, quarterly, from 2000 Q1.
+#'
+#' @usage data("eamd")
+#'
+#' @format A named list of eleven regions -- \code{ea} (the euro area
+#' aggregate), then \code{at}, \code{be}, \code{de}, \code{el}, \code{es},
+#' \code{fr}, \code{ie}, \code{it}, \code{nl} and \code{pt}. Each is a list of
+#' two time-series objects:
+#' \describe{
+#'   \item{financial}{The block the index is extracted from, 2000 Q1 to 2026 Q3.
+#'   The first 22 columns are one common definition applied to every region and
+#'   carry the same name throughout, so the eleven indices can be read against
+#'   each other; see 'Details' for the four regions that do not have all of
+#'   them, and for the two that have more. Missing values are carried through to
+#'   the filter by \code{\link{create_fcimodel}} rather than imputed.}
+#'   \item{macro}{Three macroeconomic variables, 2000 Q2 to 2025 Q4: output
+#'   growth (\code{y}), inflation (\code{p}) and the unemployment rate
+#'   (\code{u}), in the units \code{koop$macro} uses. Unlike \code{koop} there
+#'   are no real-time vintages -- neither source publishes them -- so this is a
+#'   single, fully revised series rather than a list.}
+#' }
+#'
+#' @details The financial block is stationary as shipped. EA-MD-QD publishes a
+#' transformation code per series and \code{data-raw/eamd.R} applies one:
+#' growth rates for stocks and prices, first differences for interest rates and
+#' the effective exchange rate, levels for survey balances, the spreads and the
+#' uncertainty index. This matters, because a factor extracted from trending
+#' levels is a trend.
+#'
+#' The code applied to a concept is the same in every region, which EA-MD-QD's
+#' own TR1 column is not -- it is assigned per country, so the same series is
+#' differenced once for one member and twice for another. Honouring that would
+#' make a column mean a growth rate in one region and an acceleration in
+#' another, which would defeat the purpose of a comparable panel, so the block
+#' is differenced once throughout.
+#'
+#' It is also curated rather than exhaustive: EA-MD-QD's financial class is
+#' mostly sectoral balance sheets, and a factor of all of it is a factor of
+#' sectoral balance sheets. What is kept mirrors the composition of the 18
+#' series of Koop and Korobilis -- asset prices, spreads, credit growth, surveys
+#' and one uncertainty measure.
+#'
+#' Four regions depart from the common 21 columns. Ireland has no split of
+#' household or corporate loans by maturity, so it lacks \code{hh_loans_lt},
+#' \code{hh_loans_st} and \code{nfc_loans_lt}; Greece lacks
+#' \code{bank_deposits}. Austria and Germany carry four columns the others do
+#' not -- \code{house_prices}, \code{spread_mortgage}, \code{credit_gdp_hh} and
+#' \code{credit_gdp_nfc} -- because AustriaMacroData publishes a national panel
+#' for those two and neither source has the equivalents elsewhere. They are the
+#' closest counterparts in this data to \code{koop}'s \code{loanhpi} and
+#' \code{spread_30_mort}, and they are appended after the common columns, so
+#' subsetting a block to the first 22 names recovers the strictly comparable
+#' set.
+#'
+#' The money market is a single euro-area market, so \code{irate_short} and
+#' \code{spread_money} are the same series in all eleven blocks, as is
+#' \code{usd}; only \code{irate_long}, and through it \code{spread_term}, is
+#' country-specific.
+#'
+#' Two uncertainty measures are common to every block. \code{vix} is
+#' \code{koop}'s own series, the CBOE volatility index, taken from FRED
+#' (\code{VIXCLS}) and averaged from daily closes over complete quarters;
+#' \code{gpr} is the Caldara and Iacoviello (2022) geopolitical risk index, the
+#' authors' \emph{global} one rather than the country-specific version where
+#' they publish it. Both are global rather than domestic measures here, so
+#' either can move any of these indices without anything having happened in that
+#' economy.
+#'
+#' Neither is a good anchor for \code{\link{fci}}'s \code{sign_on}, which is
+#' worth knowing before reaching for \code{sign_on = "vix"} by analogy with the
+#' paper. The VIX loads 0.06 in absolute value in Italy, 0.21 in France and 0.38
+#' in Germany, and it loads with the \emph{wrong} sign in Greece, Italy and
+#' Portugal, whose factor is dominated by a sovereign crisis that US equity
+#' volatility did not track; signing on it there turns those three indices
+#' upside down. \code{gpr} is weak too, at 0.34 in Spain. The survey balances
+#' are what load strongly everywhere -- \code{esi} at no less than 0.82 -- but
+#' they rise with \emph{loosening}, so \code{-fci(model, sign_on = "esi")} is
+#' the robust route to a stress-oriented index, and is what
+#' \code{vignette("euro-area-and-member-countries")} uses.
+#'
+#' National financial accounts are occasionally reclassified, and in a growth
+#' rate that shows up as one quarter in which a whole sector account jumps at
+#' once. Two such quarters are blanked -- Austria in 2005 Q4 and the
+#' Netherlands in 2009 Q4 -- by a uniform rule: a balance-sheet observation
+#' beyond five standard deviations is set to \code{NA} when at least three
+#' balance-sheet series in that region exceed it in the same quarter. No part of
+#' 2008--09 is caught, since the crash reaches at most three standard deviations
+#' in these columns. The Dutch break matters: left in, that single quarter
+#' dominates the Dutch factor, whose correlation with the euro area index is
+#' then 0.10 rather than 0.85.
+#'
+#' @source EA-MD-QD, release 2026-04, of Barigozzi and Lissona; the Austrian and
+#' German panels of \url{https://github.com/franzmohr/AustriaMacroData}; and
+#' series \code{VIXCLS} from FRED,
+#' \url{https://fred.stlouisfed.org/series/VIXCLS}. See \code{data-raw/eamd.R}
+#' for how each column is built.
+#'
+#' @references
+#'
+#' Barigozzi, M., & Lissona, C. EA-MD-QD: Large euro area and euro member
+#' countries datasets for macroeconomic research.
+#' \url{https://github.com/BarigozziMatteo/EA-MD-QD}
+#'
+#' Caldara, D., & Iacoviello, M. (2022). Measuring geopolitical risk.
+#' \emph{American Economic Review, 112}(4), 1194--1225.
+#' \doi{10.1257/aer.20191823}
+#'
+#' Koop, G., & Korobilis, D. (2014). A new index of financial conditions.
+#' \emph{European Economic Review, 71}, 101--116.
+#' \doi{10.1016/j.euroecorev.2014.07.002}
+#'
+"eamd"

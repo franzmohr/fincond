@@ -1,0 +1,456 @@
+---
+title: "Financial conditions in the euro area and its member countries"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Financial conditions in the euro area and its member countries}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 7,
+  fig.height = 4.5
+)
+```
+
+`vignette("reproducing-koop-korobilis")` runs the two exercises of Koop and
+Korobilis (2014) on the US data the paper published. This one runs the same
+model eleven times: once for the euro area as a whole and once for each of its
+ten largest member countries, from one estimator, one block definition and one
+sign convention, so that the eleven indices can be read against each other.
+
+Two things differ from the paper, and both follow from the data rather than
+from the model. The sample is short -- 103 quarters from 2000, against the
+paper's 175, because that is where harmonised euro-area statistics start. And
+there are no vintages, so the paper's real-time exercise cannot be repeated;
+what replaces it below is weaker and is labelled as such.
+
+```{r setup}
+library("fincond")
+
+set.seed(1234567)
+
+data("eamd")
+```
+
+## The data
+
+`eamd` holds one financial and one macroeconomic block for each of eleven
+regions; see `?eamd`. The macro block is everywhere the `(y, p, u)` triple of
+`koop$macro` -- output growth, inflation, the unemployment rate -- over an
+identical 2000 Q2 to 2025 Q4 span.
+
+```{r regions}
+names(eamd)
+sapply(eamd, function(z) c(financial = ncol(z$financial), obs = nrow(z$macro)))
+```
+
+The financial block is where the substantive choices are, and there are three.
+
+It is **transformed, not shipped in levels.** EA-MD-QD publishes a
+transformation code per series, and `data-raw/eamd.R` applies one: growth rates
+for stocks and prices, first differences for rates, levels for survey balances
+and spreads. A factor extracted from trending levels is a trend.
+
+It is **curated, not exhaustive.** EA-MD-QD's financial class is mostly sectoral
+balance sheets -- 26 of them for the euro area -- and a factor of all of it is a
+factor of sectoral balance sheets. What is kept mirrors the composition of the
+paper's own 18 series.
+
+And it is **one definition applied to all eleven regions**, so that a column
+name means the same thing everywhere. Four regions depart from it:
+
+```{r columns}
+core <- colnames(eamd$ea$financial)
+
+data.frame(
+  missing = sapply(eamd, function(z) paste(setdiff(core, colnames(z$financial)),
+                                           collapse = " ")),
+  extra = sapply(eamd, function(z) paste(setdiff(colnames(z$financial), core),
+                                         collapse = " "))
+)
+```
+
+Ireland publishes no maturity split of household or corporate loans and Greece
+no deposit series, so those columns are absent rather than empty. Austria and
+Germany carry four more than the others, because AustriaMacroData publishes a
+national panel for those two and neither source has the equivalents elsewhere;
+they are appended last, so subsetting to `core` recovers the strictly
+comparable set. Note also how much of the block is not country-specific.
+`irate_short`, `spread_money` and `usd` are the same series in all eleven -- the
+money market is a single euro-area market, and so is the euro's dollar rate --
+and so are the two uncertainty measures, `vix` and `gpr`, which come from
+outside EA-MD-QD entirely: the CBOE volatility index from FRED, which is
+`koop`'s own series and the one input here with a direct counterpart in the
+paper rather than a substitute, and the global geopolitical risk index of
+Caldara and Iacoviello (2022). Both are global measures, so either can move any
+of these indices without anything having happened in that economy. Of the
+common columns only `irate_long`, and through it `spread_term`, is genuinely
+national.
+
+## Eleven indices
+
+```{r fit}
+models <- lapply(eamd, function(d) {
+  model <- create_fcimodel(y = d$macro, x = d$financial, p = 4, n = 1)
+  model <- add_priors(model)
+  add_posterior_coefficients(model)
+})
+
+index <- lapply(models, function(m) -fci(m, sign_on = "esi"))
+
+all <- do.call(ts.intersect, index)
+colnames(all) <- names(index)
+```
+
+The orientation deserves a section, because eleven regions turn it from a
+formality into a real problem. The sign of a factor is not identified, so it has
+to be fixed by convention, and `sign_on` fixes it by naming a series whose
+loading should come out positive. The paper names the VIX, which loads hugely on
+its factor -- and since `vix` is in this block too, `sign_on = "vix"` is the
+obvious thing to reach for. It is also wrong here, and an anchor has to load
+strongly, since the whole orientation turns on the sign of one number. In
+magnitude:
+
+```{r anchor}
+anchor <- sapply(models, function(m) {
+  l <- colMeans(factor_loadings(m))
+  round(abs(l[c("vix", "gpr", "esi")]), 2)
+})
+anchor
+
+apply(anchor, 1, min)
+```
+
+The VIX loads 0.06 in Italy and 0.21 in France -- small enough that the sign of
+an entire country's index would turn on noise. Worse, in Greece, Italy and
+Portugal it loads with the opposite sign to everywhere else, which is not a
+defect in the series but a fact about those three: their factor is dominated by
+a sovereign debt crisis that US equity volatility never tracked. Signing on the
+VIX therefore turns those three indices upside down, and only those three:
+
+```{r anchor-vix}
+sapply(names(models), function(r) {
+  round(cor(as.numeric(fci(models[[r]], sign_on = "vix")),
+            as.numeric(-fci(models[[r]], sign_on = "esi"))), 2)
+})
+```
+
+`gpr` is weak too, at 0.34 in Spain. What loads strongly in every region is the
+survey balances -- `esi` at no less than 0.82 -- but they rise with
+*loosening*, so signing on `esi` gives a high-means-loose index and the minus in
+`-fci(model, sign_on = "esi")` turns it back into the paper's
+high-means-stressed convention. That is the anchor used throughout below.
+
+Eleven series on one pair of axes is unreadable, so each is drawn against the
+euro area aggregate instead -- grey behind, the region itself in front:
+
+```{r plot-all, fig.height = 8}
+opar <- par(mfrow = c(4, 3), mar = c(2, 3, 2, 1), mgp = c(2, 0.6, 0))
+
+for (r in colnames(all)) {
+  ts.plot(all[, c("ea", r)], col = c("grey70", "firebrick"),
+          lwd = c(1.5, 1.8), ylim = range(all), ylab = "", xlab = "",
+          main = toupper(r))
+  abline(h = 0, lty = "dashed", col = "grey40")
+}
+
+par(opar)
+```
+
+## Where and when the crisis was
+
+The paper's claim about its own index is about the ranking of episodes rather
+than about any one value. With eleven regions the interesting version of that
+claim is not each ranking on its own but whether they differ in the way the
+euro area's history says they should.
+
+```{r peaks}
+as_quarter <- function(x) {
+  yr <- floor(x + 1e-8)
+  paste0(yr, " Q", round((x - yr) * 4) + 1)
+}
+
+peak_of <- function(z) as_quarter(as.numeric(time(z))[which.max(z)])
+
+data.frame(peak = sapply(index, peak_of),
+           value = round(sapply(index, max), 2),
+           cor_with_ea = round(apply(all, 2,
+                                     function(z) cor(z, all[, "ea"])), 2))
+```
+
+They do. Eight of the eleven peak in the global financial crisis, the euro
+area aggregate in 2008 Q4 -- the paper's own quarter, on entirely different
+data -- and the rest a quarter or two later. Greece, Italy and Portugal peak in
+2012, at the sovereign debt crisis instead, which is the single fact about the
+euro area's decade that any index of its financial conditions has to reproduce,
+and no part of the estimation was told about it. Ireland's peak is the highest
+of the eleven, which is the right answer for the country whose banking system
+failed most completely.
+
+The episode averages say the same thing in more detail:
+
+```{r episodes}
+episode <- function(from, to) {
+  round(colMeans(window(all, start = from, end = to)), 2)
+}
+
+t(rbind("2006-07 boom"      = episode(c(2006, 1), c(2007, 4)),
+        "2008-09 crisis"    = episode(c(2008, 4), c(2009, 3)),
+        "2011-13 sovereign" = episode(c(2011, 3), c(2013, 4)),
+        "2020 pandemic"     = episode(c(2020, 1), c(2020, 4)),
+        "2021 recovery"     = episode(c(2021, 1), c(2021, 4)),
+        "2023-25"           = episode(c(2023, 1), c(2025, 4))))
+```
+
+Read down the two crisis columns and the periphery separates itself. Greece,
+Italy, Portugal and -- narrowly -- Spain are the regions whose 2011--13 average
+exceeds their 2008--09 one; in the other seven the order is the other way round.
+Spain is the borderline case in both directions, and reads as one: its two
+highest quarters are 2009 Q1 and 2008 Q4, so it peaks with the core, but its
+2011--13 average is fractionally the higher of the two and 2012 Q2 comes third.
+Spain had both crises.
+
+The pandemic is a smaller event than 2008 in ten of the eleven, despite being
+the larger shock to output. That is the index working rather than failing --
+2020 was a real shock met immediately by policy support, and conditions never
+tightened the way they do when the shock starts inside the financial system. The
+exception is Greece, and not because 2020 was severe there but because its
+2008--09 was not; the next section takes that up.
+
+## Germany and Greece are the loose ends
+
+Two regions sit well below the rest in agreement with the aggregate, for
+opposite reasons.
+
+```{r germany}
+round(window(all[, c("de", "ea")], start = c(2002, 1), end = c(2004, 4)), 2)
+round(window(all[, c("de", "ea")], start = c(2020, 1), end = c(2020, 4)), 2)
+```
+
+Germany correlates 0.40. It peaks with everyone else in 2009, but it is elevated
+through 2002--04 when the aggregate is not, and it is the one region that reads
+2020 as *loose* rather than tight. The first of those is defensible: the DAX had
+fallen by around two thirds from its 2000 high, several large banks were in
+distress, and the country was being called the sick man of Europe. The second is
+the reading to treat with most caution.
+
+Greece correlates 0.42, and its problem is the sample rather than the model. Its
+2008--09 average is 0.36, the mildest of the eleven, because in 2009 the Greek
+crisis had not yet begun; almost everything its factor has to work with happened
+after 2010. A single factor per country is what the model is, and where a
+country's cycle does not line up with the union's, that factor has no obligation
+to.
+
+## Factor loadings
+
+Each series has its own time varying exposure to the index. The euro area's,
+which `plot()` produces for any of the eleven:
+
+```{r loadings-ea, fig.height = 7}
+plot(models$ea, which = "loadings")
+```
+
+Across regions, the compact version is the average loading of each series,
+signed the way the index is. What matters is not any single number but whether
+the eleven columns agree:
+
+```{r loadings-table}
+# fci() flips the factor by the sign of the anchor's mean loading, and
+# factor_loadings() returns the unflipped ones; the index is then negated. So
+# the loading in the index's own orientation is -sign(l_esi) * l.
+loadings <- sapply(models, function(m) {
+  l <- colMeans(factor_loadings(m))
+  -sign(l[["esi"]]) * l[core]
+})
+round(loadings, 1)
+```
+
+```{r loadings-signs}
+counts <- data.frame(positive = rowSums(loadings > 0, na.rm = TRUE),
+                     negative = rowSums(loadings < 0, na.rm = TRUE),
+                     absent = rowSums(is.na(loadings)))
+counts
+
+# Series on whose sign every region that has them agrees.
+unanimous <- rownames(counts)[counts$positive == 0 | counts$negative == 0]
+unanimous
+```
+
+`gpr` and `spread_term` load positively in all eleven regions. Every survey
+balance loads negatively in all eleven, as do household debt growth, long-term
+bank lending and the short rate. In all, `r length(unanimous)` of the
+`r nrow(counts)` inputs draw the same sign from every region that publishes
+them.
+
+`vix` is the informative dissenter: positive in eight regions and negative in
+Greece, Italy and Portugal -- the same split that made it unusable as an anchor,
+seen from the other side.
+
+Nothing in the estimator enforces that. The sign convention fixes one series per
+region, not twenty-two, and the eleven factors are estimated separately on
+eleven separate blocks -- so the agreement is the indices earning a common name.
+
+The short rate is worth a second look, since loading negatively on stress reads
+backwards. It is a timing artefact rather than a puzzle: the ECB cuts when
+conditions tighten, so a falling policy rate is what accompanies stress rather
+than what relieves it.
+
+The two series that genuinely split are `equity` and `spread_money`, and both
+have a reason to. Equity returns in a small open market track the global cycle
+more than the domestic one, so which of the two a national index picks up
+varies.
+And the money-market spread is a single euro-area quantity being asked to say
+something country-specific, which after 2012 it cannot: it is the same series in
+all eleven blocks.
+
+## A recursive index
+
+The paper's second exercise re-estimates the index once per real-time vintage
+and shows that a reading made at the time is close to its own fully revised
+counterpart. That cannot be repeated here: neither source publishes vintages.
+
+What can be repeated is the other half of it. Re-estimating on an expanding
+window answers whether the index needs data from after the quarter it is dating
+-- but it uses today's revised figures throughout, so it says nothing about how
+much revisions move the index. It is the weaker of the two questions and the
+answer below should not be read as the paper's.
+
+```{r recursive}
+recursive_fci <- function(d, from = c(2006, 1)) {
+  ends <- as.numeric(time(window(d$macro, start = from)))
+  out <- numeric(length(ends))
+
+  for (i in seq_along(ends)) {
+    yr <- floor(ends[i] + 1e-8)
+    qtr <- round((ends[i] - yr) * 4) + 1
+
+    y_i <- window(d$macro, end = c(yr, qtr))
+    x_i <- window(d$financial, end = c(yr, qtr))
+    # Keep only the series that have started by this quarter.
+    x_i <- x_i[, colSums(!is.na(x_i)) >= 2, drop = FALSE]
+
+    m_i <- create_fcimodel(y = y_i, x = x_i, p = 4, n = 1)
+    m_i <- add_priors(m_i)
+    m_i <- add_posterior_coefficients(m_i)
+
+    # Not standardised: each fit has its own sample, so its own mean and
+    # variance, and rescaling every one separately would put the readings on
+    # eighty different scales.
+    index_i <- -fci(m_i, sign_on = "esi", standardize = FALSE)
+    out[i] <- as.numeric(index_i)[length(index_i)]
+  }
+
+  ts(out, start = c(floor(ends[1] + 1e-8),
+                    round((ends[1] - floor(ends[1] + 1e-8)) * 4) + 1),
+     frequency = 4)
+}
+
+recursive <- lapply(eamd, recursive_fci)
+```
+
+Each entry is a one-off reading: the value the index took in that quarter,
+estimated with nothing later in the sample. Against the same quarters of the
+full-sample index:
+
+```{r recursive-cor}
+agreement <- sapply(names(recursive), function(r) {
+  full <- -fci(models[[r]], sign_on = "esi", standardize = FALSE)
+  z <- ts.intersect(recursive[[r]], full)
+  cor(z[, 1], z[, 2])
+})
+round(sort(agreement), 3)
+```
+
+```{r recursive-plot, fig.height = 6}
+compare <- function(r) {
+  full <- -fci(models[[r]], sign_on = "esi", standardize = FALSE)
+  z <- ts.intersect(recursive[[r]], full)
+  scale_it <- function(v) (v - mean(v)) / stats::sd(v)
+  ts(cbind(scale_it(z[, 1]), scale_it(z[, 2])),
+     start = stats::start(z), frequency = 4)
+}
+
+opar <- par(mfrow = c(2, 2), mar = c(3, 4, 2, 1))
+for (r in c("ea", "de", "el", "nl")) {
+  ts.plot(compare(r), col = c("firebrick", "grey30"), lwd = c(1.8, 1),
+          ylab = "Index", xlab = "", main = toupper(r))
+}
+par(opar)
+```
+
+The spread is the part worth keeping: from 0.73 in Greece to 0.98 in Belgium,
+with a median around 0.90. It is tempting to read that against the
+0.94 the genuinely real-time comparison in
+`vignette("reproducing-koop-korobilis")` returns, and worth resisting -- these
+exercises answer different questions, this one having been spared revisions
+entirely. What is fair to say is that being spared them does not by itself make
+the answer high: six of the eleven regions here still come in below 0.94.
+
+Where agreement is weakest is the informative part. Greece is at the bottom for
+a reason the panel has already shown: a recursive estimate run in 2010 had not
+yet seen the sovereign crisis that the full-sample estimate uses to calibrate
+it, so its early readings come from a model that does not know what is coming.
+Spain, Portugal and Italy follow for the same reason. Germany is second from the
+bottom for the different reason given above -- its factor is the least like the
+others to begin with. At the top, Belgium, the Netherlands, Austria and Ireland
+are the regions whose crisis fell squarely inside the recursion's own window.
+
+## What the indices are for
+
+An index of financial conditions should say something about the real economy the
+real data have not said yet. Regressing each macro variable on its own value and
+the index is the crude version of that test, run here for every region at once:
+
+```{r predictive}
+predictive <- function(r, target, h) {
+  d <- as.data.frame(na.omit(stats::ts.intersect(
+    lead = stats::lag(eamd[[r]]$macro[, target], h),
+    own = eamd[[r]]$macro[, target],
+    fci = index[[r]])))
+  own_only <- summary(stats::lm(lead ~ own, data = d))$r.squared
+  with_fci <- summary(stats::lm(lead ~ own + fci, data = d))
+  c(r2_own = round(own_only, 3),
+    r2_with_fci = round(with_fci$r.squared, 3),
+    coef_fci = round(stats::coef(with_fci)[3, 1], 2))
+}
+
+t(sapply(names(eamd), predictive, target = "u", h = 4))
+```
+
+A year ahead, tighter financial conditions mean higher unemployment in every one
+of the eleven regions, and the index adds to what unemployment's own persistence
+already explains in all of them. Two years ahead the sign holds in ten of eleven
+-- Portugal is the exception, and is also the region where the index adds least
+at one year.
+
+```{r predictive-y}
+t(sapply(names(eamd), predictive, target = "y", h = 1))
+```
+
+For output growth the sign reverses, as it should, since growth is the outcome
+you want more of: tighter conditions now, weaker growth next quarter, in ten of
+the eleven regions. The fits are small because a quarterly growth rate is close
+to unforecastable at any horizon by anything, which is not a defect of the
+index.
+
+Two caveats. These are in-sample fits, not forecasts: nothing here was estimated
+without the data it is scored on. And the horizons overlap, so the regressions
+violate the assumptions their standard errors would need, which is why none are
+reported. Read the tables as descriptions of co-movement, and see Koop and
+Korobilis (2014, sec. 5) for the out-of-sample version of the question.
+
+## References
+
+Barigozzi, M., & Lissona, C. EA-MD-QD: Large euro area and euro member countries
+datasets for macroeconomic research.
+<https://github.com/BarigozziMatteo/EA-MD-QD>
+
+Caldara, D., & Iacoviello, M. (2022). Measuring geopolitical risk. *American
+Economic Review, 112*(4), 1194--1225.
+
+Koop, G., & Korobilis, D. (2014). A new index of financial conditions. *European
+Economic Review, 71*, 101--116.
