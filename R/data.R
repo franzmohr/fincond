@@ -151,3 +151,78 @@
 #' \doi{10.1016/j.euroecorev.2014.07.002}
 #'
 "eamd"
+
+
+#' Austria over a long sample
+#'
+#' Macroeconomic and financial variables for Austria from 1993 Q1, built to the
+#' design of \code{\link{koop}} and \code{\link{eamd}} but trading the
+#' cross-country comparability of the latter for thirty more quarters of one
+#' country, quarterly.
+#'
+#' @usage data("atlong")
+#'
+#' @format A list of two time-series objects:
+#' \describe{
+#'   \item{financial}{27 financial variables, 1993 Q1 to 2026 Q3. The block is
+#'   ragged by construction: eleven series are present in the first quarter and
+#'   the rest begin later, the sectoral balance sheets last, in 2000. Missing
+#'   values are carried through to the filter by \code{\link{create_fcimodel}}
+#'   rather than imputed, which is the same shape \code{koop} has -- its VIX
+#'   starts in 1990 against a sample from 1970.}
+#'   \item{macro}{Output growth (\code{y}), inflation (\code{p}) and the
+#'   unemployment rate (\code{u}), 1993 Q1 to 2025 Q4, in the units
+#'   \code{koop$macro} uses. Complete by construction: the macro block is the
+#'   state itself and \code{create_fcimodel} does not accept gaps in it.}
+#' }
+#'
+#' @details \code{eamd} begins in 2000 Q1 because EA-MD-QD does, for all eleven
+#' of its regions, and it cannot be extended for one member without giving up
+#' what makes it comparable. This dataset gives that up deliberately. Austria is
+#' one of the two regions where it is possible, because AustriaMacroData
+#' publishes a national panel reaching back to the 1950s; the other nine regions
+#' have nothing before 2000 in either source. Use \code{eamd} for anything
+#' cross-country.
+#'
+#' What sets the start is the unemployment rate, which neither source carries
+#' before 1993 Q1 in a form that also runs to the present. Real GDP reaches back
+#' to 1960 and would allow considerably more.
+#'
+#' Two things differ from \code{eamd} beyond the sample. Inflation is the
+#' consumer price index rather than the GDP deflator, because the national panel
+#' publishes no deflator; its own CPI starts in 1996, so the twelve quarters
+#' before that come from FRED's OECD series \code{AUTCPIALLQINMEI}. Growth rates
+#' are spliced rather than levels, so no chain-linking is involved and no level
+#' break can be introduced, and the two sources correlate 0.92 in quarterly
+#' inflation over their 116-quarter overlap. And where a concept exists in both
+#' sources the national one is used throughout rather than switching in 2000, so
+#' that a column means one thing over the whole sample -- which makes the short
+#' rate Austria's own money-market rate before 1999 and the euro rate after.
+#'
+#' The two are close where they overlap despite those differences: the index of
+#' Koop and Korobilis (2014) estimated on this block correlates 0.98 with the
+#' one estimated on \code{eamd$at} over the 103 quarters they share, and both
+#' peak in 2009 Q1. The extra years read as the ERM crisis and the Austrian
+#' recession of 1993, which is the tightest reading in the sample outside 2008
+#' and 2001.
+#'
+#' One quarter is blanked, Austria 2005 Q4, by the same simultaneity rule
+#' \code{data-raw/eamd.R} applies and for the same reason; see \code{?eamd}.
+#'
+#' @source AustriaMacroData, \url{https://github.com/franzmohr/AustriaMacroData};
+#' EA-MD-QD, release 2026-04, of Barigozzi and Lissona, for the sectoral balance
+#' sheets and the money-market spread from 2000; and series \code{VIXCLS} and
+#' \code{AUTCPIALLQINMEI} from FRED. See \code{data-raw/atlong.R} for how each
+#' column is built.
+#'
+#' @references
+#'
+#' Barigozzi, M., & Lissona, C. EA-MD-QD: Large euro area and euro member
+#' countries datasets for macroeconomic research.
+#' \url{https://github.com/BarigozziMatteo/EA-MD-QD}
+#'
+#' Koop, G., & Korobilis, D. (2014). A new index of financial conditions.
+#' \emph{European Economic Review, 71}, 101--116.
+#' \doi{10.1016/j.euroecorev.2014.07.002}
+#'
+"atlong"

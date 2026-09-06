@@ -21,15 +21,18 @@ common definition, which is what makes them comparable and also what stops any
 one of them from being examined closely. This vignette does the opposite: one
 country, taken apart.
 
-Austria is the country to take apart, for two reasons that have nothing to do
+Austria is the country to take apart, for three reasons that have nothing to do
 with its size. It is one of only two regions in `eamd` that carry a national
 block on top of the common columns -- house prices, a mortgage spread and two
 credit-to-GDP ratios -- which are the closest thing in this data to the
 `loanhpi` and `spread_30_mort` of Koop and Korobilis (2014), so Austria is where
-the paper's own block composition can very nearly be reproduced. And its
-financial history separates cleanly from the aggregate's: a severe 2008--09, a
-mild sovereign crisis, and a recent episode the euro area as a whole did not
-have.
+the paper's own block composition can very nearly be reproduced. Its financial
+history separates cleanly from the aggregate's: a severe 2008--09, a mild
+sovereign crisis, and a recent episode the euro area as a whole did not have.
+And it is one of the two countries whose national statistics reach back far
+enough to escape `eamd`'s 2000 start altogether, which is what `atlong` and the
+last third of this vignette are for -- the eleven-region panel cannot be
+extended, but Austria on its own can.
 
 ```{r setup}
 library("fincond")
@@ -449,8 +452,8 @@ Dropping the national block moves the correlation to
 `r dropped["national", "cor"]`, which is the honest answer to the question the
 first section left open: the four Austrian series do not change the index. They
 are worth having as a diagnostic -- the house price and mortgage spread paths
-are what let the previous section say the property correction is not what the
-factor was reading -- but nobody should expect the index to move because they
+are what let the contribution section say the property correction is not what
+the factor was reading -- but nobody should expect the index to move because they
 are there.
 
 ## A second factor
@@ -512,31 +515,39 @@ index needs data from after the quarter it is dating. It says nothing about how
 much revisions would move it.
 
 ```{r recursive}
-origins <- as.numeric(time(window(at$macro, start = c(2006, 1))))
+# Written as a function of the dataset because the longer sample below is put
+# through exactly the same recursion. The whole filtered path is kept rather
+# than only its last value: the forecasting section needs the index history
+# each vintage would have had, not just its final reading.
+vintages_of <- function(d, from) {
+  origins <- as.numeric(time(window(d$macro, start = from)))
 
-vintage <- lapply(origins, function(o) {
-  yr <- floor(o + 1e-8)
-  qtr <- round((o - yr) * 4) + 1
+  paths <- lapply(origins, function(o) {
+    yr <- floor(o + 1e-8)
+    qtr <- round((o - yr) * 4) + 1
 
-  x_o <- window(at$financial, end = c(yr, qtr))
-  # Keep only the series that have started by this quarter.
-  x_o <- x_o[, colSums(!is.na(x_o)) >= 2, drop = FALSE]
+    x_o <- window(d$financial, end = c(yr, qtr))
+    # Keep only the series that have started by this quarter.
+    x_o <- x_o[, colSums(!is.na(x_o)) >= 2, drop = FALSE]
 
-  m_o <- create_fcimodel(y = window(at$macro, end = c(yr, qtr)), x = x_o,
-                         p = 4, n = 1)
-  m_o <- add_posterior_coefficients(add_priors(m_o))
+    m_o <- create_fcimodel(y = window(d$macro, end = c(yr, qtr)), x = x_o,
+                           p = 4, n = 1)
+    m_o <- add_posterior_coefficients(add_priors(m_o))
 
-  # Not standardised: each fit has its own sample, so its own mean and
-  # variance, and rescaling every one separately would put the readings on
-  # eighty different scales.
-  -fci(m_o, sign_on = "esi", standardize = FALSE)
-})
+    # Not standardised: each fit has its own sample, so its own mean and
+    # variance, and rescaling every one separately would put the readings on
+    # eighty different scales.
+    -fci(m_o, sign_on = "esi", standardize = FALSE)
+  })
 
-# The whole filtered path is kept rather than only its last value, because the
-# next section needs the index history each vintage would have had.
+  list(origins = origins, vintage = paths, macro = d$macro)
+}
+
+vintages <- vintages_of(at, from = c(2006, 1))
+
 last_of <- function(z) as.numeric(z)[length(z)]
-recursive <- ts(vapply(vintage, last_of, numeric(1)), start = c(2006, 1),
-                frequency = 4)
+recursive <- ts(vapply(vintages$vintage, last_of, numeric(1)),
+                start = c(2006, 1), frequency = 4)
 ```
 
 Each entry of `recursive` is a one-off reading: the value the index took in that
@@ -571,6 +582,107 @@ bottom of that ranking for the mirror-image reason: a recursion beginning in
 2006 had not yet met the crisis that defines the Greek factor. Read this number
 as a statement about where Austria's crisis sits in its sample, not as a
 general claim about the estimator.
+
+## A longer sample
+
+Everything above runs on `eamd`, which starts in 2000 Q1 because EA-MD-QD
+does -- for all eleven regions at once. That is a property of the source rather
+than of Austria, and it is the binding constraint on a vignette that has just
+spent a section complaining about an eighty-quarter evaluation sample. Austria
+is one of the two regions where it can be relaxed, because AustriaMacroData
+publishes a national panel reaching back to the 1950s. `atlong` is that panel
+assembled to the same design:
+
+```{r atlong-data}
+data("atlong")
+
+c(quarters = nrow(atlong$macro), series = ncol(atlong$financial))
+range(time(atlong$macro))
+```
+
+`r nrow(atlong$macro)` quarters against `r nrow(at$macro)`. What stops it going
+further is the unemployment rate, which neither source carries before 1993 in a
+form that also reaches the present; real GDP would allow 1960. The price of the
+extra years is that the block is ragged, since the series do not all begin at
+once:
+
+```{r atlong-ragged}
+# Counted over the span the model actually uses: the financial block runs a few
+# quarters past the macro one, and those quarters are dropped on alignment.
+covered <- window(atlong$financial, start = start(atlong$macro),
+                  end = end(atlong$macro))
+available <- rowSums(!is.na(covered))
+
+c(first = available[1], last = available[length(available)])
+
+# How many quarters the block has each width for.
+table(available)
+```
+
+That is the shape `koop` has -- its VIX starts in 1990 against a sample from
+1970 -- and what `create_fcimodel` carries rather than imputes. The sectoral
+balance sheets arrive last, in 2000, because no national source publishes them.
+
+```{r atlong-fit}
+long_model <- create_fcimodel(y = atlong$macro, x = atlong$financial,
+                              p = 4, n = 1)
+long_model <- add_posterior_coefficients(add_priors(long_model))
+
+long_index <- -fci(long_model, sign_on = "esi")
+```
+
+The first thing to ask of a differently-sourced index is whether it agrees with
+the one it extends, over the quarters both cover:
+
+```{r atlong-agree}
+overlap <- ts.intersect(long = long_index, eamd = index)
+
+round(cor(overlap[, "long"], overlap[, "eamd"]), 3)
+```
+
+It does, at `r round(cor(ts.intersect(long_index, index)[, 1], ts.intersect(long_index, index)[, 2]), 3)`,
+which is worth more than it looks. The two blocks share no interest rate
+construction, take equity and house prices from different publishers, and use
+different inflation measures -- `atlong` has the consumer price index because
+the national panel publishes no deflator. Two independent assemblies of the
+idea "Austrian financial conditions" landing on the same series is evidence
+about the idea rather than about either dataset.
+
+```{r atlong-plot}
+ts.plot(long_index, col = "firebrick", lwd = 1.6, ylab = "Index", xlab = "",
+        main = "Austrian financial conditions, 1993 to 2025")
+abline(h = 0, lty = "dashed", col = "grey40")
+```
+
+```{r atlong-peaks}
+ord <- order(-long_index)[1:8]
+data.frame(quarter = as_quarter(as.numeric(time(long_index))[ord]),
+           index = round(as.numeric(long_index)[ord], 2))
+```
+
+The ranking survives the extension -- `r as_quarter(as.numeric(time(long_index))[which.max(long_index)])`
+is still the peak, and 2001 Q4 still second -- and the new years earn a place in
+it rather than sitting quietly at the start. 1993 Q1 and 1993 Q2 come third and
+sixth:
+
+```{r atlong-1993}
+round(window(long_index, start = c(1993, 1), end = c(1995, 4)), 2)
+```
+
+Nothing in the estimation was told about 1993, and it is the right answer: the
+exchange rate mechanism crisis ran from September 1992 into August 1993, and
+Austria was in recession through it, three years short of joining the European
+Union and six from the euro. An index that reads it as the tightest stretch
+outside 2008 and 2001 is making a defensible claim about a period no part of
+`eamd` can see.
+
+Two cautions before using this in place of `eamd`. It is one country, so
+nothing here is comparable with the other ten -- that is exactly the trade the
+dataset makes, and `?atlong` states it. And the early quarters rest on eleven
+series rather than twenty-seven, so the 1990s readings are drawn from surveys,
+rates and asset prices with no balance-sheet information at all; the credit
+block that the drop-group section found load-bearing for 2023--25 simply does
+not exist before 2000.
 
 ## What the index is for
 
@@ -620,7 +732,8 @@ does the version that is not vulnerable to either objection.
 
 ## Out of sample
 
-The vintages of the previous section make a real forecasting exercise possible,
+The vintages built for the recursive index make a real forecasting exercise
+possible,
 because they contain the index history a user would have had at each date. The
 rule is that nothing estimated at origin `t` may touch data after `t` -- which
 covers the regression coefficients as well as the index, since a regression
@@ -628,13 +741,13 @@ fitted on the full sample would leak the future just as surely as a full-sample
 factor would.
 
 ```{r oos-forecast}
-forecasts <- function(target, h) {
-  y <- at$macro[, target]
+forecasts <- function(target, h, set = vintages) {
+  y <- set$macro[, target]
   stamp <- as.numeric(time(y))
 
-  rows <- lapply(seq_along(origins), function(k) {
-    path <- vintage[[k]]
-    realised <- which(abs(stamp - (origins[k] + h / 4)) < 1e-6)
+  rows <- lapply(seq_along(set$origins), function(k) {
+    path <- set$vintage[[k]]
+    realised <- which(abs(stamp - (set$origins[k] + h / 4)) < 1e-6)
     if (length(realised) == 0) return(NULL)
 
     # Everything below sees only data through this origin.
@@ -648,7 +761,7 @@ forecasts <- function(target, h) {
       as.numeric(stats::predict(stats::lm(f, data = d), newdata = now))
     }
 
-    data.frame(origin = origins[k], actual = as.numeric(y)[realised],
+    data.frame(origin = set$origins[k], actual = as.numeric(y)[realised],
                bench = predict_with(lead ~ own),
                fci = predict_with(lead ~ own + fci))
   })
@@ -674,8 +787,8 @@ hac <- function(z, lag) {
   v
 }
 
-score <- function(target, h) {
-  f <- forecasts(target, h)
+score <- function(target, h, set = vintages) {
+  f <- forecasts(target, h, set)
   e_bench <- f$actual - f$bench
   e_fci <- f$actual - f$fci
 
@@ -767,13 +880,47 @@ once and then flattened would mean an index that called one crisis and was
 otherwise idle. This one climbs through the calm years as well, which is the
 stronger result and the harder one to get.
 
+Eighty forecasts of one country is a thin basis for any of this, and the
+longer sample is the obvious thing to check it against. `atlong` reaches back
+to 1993, so the same recursion started after an equivalent warm-up runs from
+1999 and yields around a third more origins -- and, more usefully, ones drawn
+from a different decade:
+
+```{r oos-long}
+long_vintages <- vintages_of(atlong, from = c(1999, 1))
+
+length(long_vintages$origins)
+
+t(sapply(c(1, 2, 4, 8), score, target = "u", set = long_vintages))
+```
+
+The result holds. Every sign is the same, the ratio still bottoms at two
+quarters, the Clark-West statistics are still around three at one and two
+quarters, and two years ahead is still nothing. The gains are slightly smaller
+throughout -- `r score("u", 2, long_vintages)[["ratio"]]` against
+`r score("u", 2)[["ratio"]]` at two quarters -- which is the ordinary direction
+for a result re-run on data it was not found on, and a good deal better than
+the alternative.
+
+The one row that moves is four quarters, where Clark-West falls from
+`r score("u", 4)[["cw"]]` to `r score("u", 4, long_vintages)[["cw"]]`. That
+horizon was already the equivocal one, with the ratio and the statistic
+disagreeing about how much the index was worth; the longer sample resolves the
+disagreement toward the ratio's reading rather than the statistic's.
+
+```{r oos-long-y}
+t(sapply(c(1, 2, 4), score, target = "y", set = long_vintages))
+```
+
+Output growth stays unforecastable, as it was on the shorter sample.
+
 Two limits remain, and neither is repairable with this data. There are no
 vintages, so the macro variables are the revised ones throughout: a genuine
 real-time user would have had worse `y`, `p` and `u` than these regressions
-were given, and the paper's own real-time exercise -- which `eamd` cannot
-support -- is the one that settles how much that matters. And a single country
-over eighty quarters is a small evaluation sample, so read the Clark-West
-statistics as indicative rather than decisive. See Koop and Korobilis (2014,
+were given, and the paper's own real-time exercise -- which neither dataset here
+can support -- is the one that settles how much that matters. And this is still
+one country, so the Clark-West statistics are indicative rather than decisive
+however many quarters they are computed over. See Koop and Korobilis (2014,
 sec. 5) for the fuller treatment.
 
 ## References
