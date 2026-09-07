@@ -476,6 +476,100 @@ are what let the contribution section say the property correction is not what
 the factor was reading -- but nobody should expect the index to move because they
 are there.
 
+## Are the surveys just the cycle?
+
+"To a substantial degree a confidence index" invites a sharper objection than
+the drop-group table can answer. Survey balances move with the business cycle,
+and Austria's four are general economic sentiment rather than anything
+financial -- the euro area has no counterpart to the senior loan officer survey
+that supplies `stdscom` in Koop and Korobilis's own block. If the surveys are
+simply reporting current growth and unemployment back to the model, then what
+the index calls financial conditions is partly the real economy wearing a
+different label.
+
+Some of that is answered by construction. The macro block is not an input the
+factor has to compete with, it is a regressor in the same measurement equation:
+each financial series is written as a loading on `y`, `p` and `u` plus a
+loading on the factor, so the factor is already what the surveys do *beyond*
+the macro block. The question is whether anything survives once lags are
+allowed too.
+
+```{r survey-macro-r2}
+surveys <- groups$surveys
+
+lg <- function(z, k) stats::lag(z, -k)
+macro_now <- stats::ts.union(y = at$macro[, "y"], p = at$macro[, "p"],
+                             u = at$macro[, "u"])
+macro_lags <- stats::ts.union(
+  macro_now,
+  y1 = lg(at$macro[, "y"], 1), p1 = lg(at$macro[, "p"], 1),
+  u1 = lg(at$macro[, "u"], 1),
+  y4 = lg(at$macro[, "y"], 4), p4 = lg(at$macro[, "p"], 4),
+  u4 = lg(at$macro[, "u"], 4))
+
+on_macro <- function(series, regs) {
+  d <- as.data.frame(stats::ts.intersect(s = at$financial[, series], regs))
+  stats::lm(s ~ ., data = d[stats::complete.cases(d), , drop = FALSE])
+}
+
+round(t(sapply(surveys, function(s) {
+  c(contemp = summary(on_macro(s, macro_now))$r.squared,
+    with_lags = summary(on_macro(s, macro_lags))$r.squared)
+})), 3)
+```
+
+Contemporaneously the macro block accounts for well under a fifth of each
+survey. Allow a year of lags and that rises to between a third and three
+fifths, which is enough to take the objection seriously. So take it seriously:
+replace each survey by what the macro block cannot explain, leave it in its
+place in the block, and refit.
+
+```{r survey-residual-index}
+residualise <- function(regs) {
+  out <- at$financial
+  stamp <- round(as.numeric(stats::time(out)), 6)
+  for (s in surveys) {
+    j <- stats::ts.intersect(s = at$financial[, s], regs)
+    d <- as.data.frame(j)
+    ok <- stats::complete.cases(d)
+    e <- stats::residuals(stats::lm(s ~ ., data = d[ok, , drop = FALSE]))
+    v <- rep(NA_real_, nrow(out))
+    v[match(round(as.numeric(stats::time(j))[ok], 6), stamp)] <- e
+    out[, s] <- v
+  }
+  out
+}
+
+refit <- function(xx) {
+  m <- create_fcimodel(y = at$macro, x = xx, p = 4, n = 1)
+  fci(add_posterior_coefficients(add_priors(m)), sign_on = "esi")
+}
+
+rbind("(none)"              = summarise(index),
+      "purged of macro"     = summarise(refit(residualise(macro_now))),
+      "purged, four lags"   = summarise(refit(residualise(macro_lags))),
+      "surveys dropped"     = dropped["surveys", ])
+```
+
+The surveys are not a business-cycle proxy in disguise. Purging the
+contemporaneous macro block changes nothing worth reporting, which is what the
+measurement equation already implied. Purging a year of lags as well costs
+something real -- the correlation falls and the crisis average softens -- but
+the index still dates Austria's worst quarter to 2009 Q1. Only dropping the
+surveys outright moves it to 2001 Q4.
+
+So the dependence the previous section found is on survey information that `y`,
+`p` and `u` do not contain at any of these lags, which is the version of the
+claim worth keeping. What the surveys are *not* is a substitute for the credit
+standards series the paper had and this block does not; that remains a
+composition gap, and it is an argument about what Austria is missing rather
+than about what its sentiment balances are made of.
+
+One limit. The regressions above are fitted on the whole sample, so the purged
+blocks use information no contemporaneous user would have had. This is a
+description of what the index is made of, not a claim about what it could have
+been in real time.
+
 ## A second factor
 
 ```{r two-factor}
