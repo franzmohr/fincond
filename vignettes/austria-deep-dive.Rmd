@@ -73,26 +73,36 @@ model <- create_fcimodel(y = at$macro, x = at$financial, p = 4, n = 1)
 model <- add_priors(model)
 model <- add_posterior_coefficients(model)
 
-index <- -fci(model, sign_on = "esi")
+index <- fci(model, sign_on = "esi")
 ```
 
-The orientation is worth one paragraph, because Austria is the case where the
-sibling vignette's caution does not bite. That vignette signs on `esi` and
-negates, because the VIX loads weakly or with the wrong sign in several members
-and so cannot anchor all eleven at once. In Austria it loads
-`r round(colMeans(factor_loadings(model))[["vix"]], 2)` with the right sign, and
-the paper's own convention returns exactly the same index:
+The orientation is worth a paragraph, because it is chosen rather than
+estimated and because this vignette does not choose it the way its siblings do.
+Here the index is signed on `esi`, the economic sentiment indicator, and left
+alone: sentiment rises when conditions loosen, so **a negative reading is a
+tight one** and a positive reading a loose one. Zero is the sample average, not
+a neutral stance.
+
+That is the opposite of the convention in
+`vignette("euro-area-and-member-countries")` and in
+`vignette("reproducing-koop-korobilis")`, which both follow Koop and Korobilis
+(2014) in making the index rise with stress. Every number below therefore needs
+a sign flip before it is read against the eleven-region tables. The two
+orientations are otherwise the same series:
 
 ```{r anchor}
 round(colMeans(factor_loadings(model))[c("vix", "gpr", "esi")], 2)
 
-identical(as.numeric(-fci(model, sign_on = "esi")),
-          as.numeric(fci(model, sign_on = "vix")))
+identical(as.numeric(fci(model, sign_on = "esi")),
+          as.numeric(-fci(model, sign_on = "vix")))
 ```
 
-Signing on `esi` is kept below anyway, so that every number here can be read
-against the eleven-region tables without a mental sign flip. But in Austria it
-is a convenience rather than a necessity.
+Austria is a country where either anchor would have served. The VIX loads
+`r round(colMeans(factor_loadings(model))[["vix"]], 2)` with the right sign
+here, so `-fci(model, sign_on = "vix")` returns exactly the same index. The
+sibling vignette cannot rely on that, because the VIX loads weakly or with the
+wrong sign in several members and so cannot anchor all eleven at once; `esi` is
+the anchor that works everywhere, and it is kept here too.
 
 ```{r plot-index}
 plot(index, main = "Austrian financial conditions index", ylab = "Index",
@@ -106,15 +116,17 @@ as_quarter <- function(x) {
   paste0(yr, " Q", round((x - yr) * 4) + 1)
 }
 
-ord <- order(-index)[1:8]
+ord <- order(index)[1:8]
 data.frame(quarter = as_quarter(as.numeric(time(index))[ord]),
            index = round(as.numeric(index)[ord], 2))
 ```
 
-The peak is `r as_quarter(as.numeric(time(index))[which.max(index)])`, and the
-quarters around it take three of the top four places. The exception is 2001 Q4,
-the dot-com bust and the months after September 2001 -- a genuine tightening in
-Austria, and the only pre-2008 quarter anywhere near the crisis readings.
+The tightest quarter is
+`r as_quarter(as.numeric(time(index))[which.min(index)])`, the most negative
+reading in the sample, and the quarters around it take three of the four
+lowest places. The exception is 2001 Q4, the dot-com bust and the months after
+September 2001 -- a genuine tightening in Austria, and the only pre-2008
+quarter anywhere near the crisis readings.
 
 The rest of the list is the surprise. Four of the eight tightest quarters in
 twenty-six years are 2023 or later.
@@ -135,8 +147,8 @@ ea <- fit_region(eamd$ea)
 de <- fit_region(eamd$de)
 
 three <- ts.intersect(at = index,
-                      ea = -fci(ea, sign_on = "esi"),
-                      de = -fci(de, sign_on = "esi"))
+                      ea = fci(ea, sign_on = "esi"),
+                      de = fci(de, sign_on = "esi"))
 
 round(cor(three), 2)
 ```
@@ -172,18 +184,20 @@ t(rbind("2000-01 dot-com"    = episode(c(2000, 2), c(2001, 4)),
         "2023-25 tightening" = episode(c(2023, 1), c(2025, 4))))
 ```
 
-Two rows carry the Austrian story. In 2011--13 Austria averages
+Remember that a lower number is a tighter one. Two rows carry the Austrian
+story. In 2011--13 Austria averages
 `r episode(c(2011, 3), c(2013, 4))[["at"]]` against the euro area's
-`r episode(c(2011, 3), c(2013, 4))[["ea"]]`: the sovereign crisis was a
-periphery event, and Austria was not in the periphery -- whatever its banks'
-exposure to central and eastern Europe was thought to imply at the time.
+`r episode(c(2011, 3), c(2013, 4))[["ea"]]` -- much the milder of the two:
+the sovereign crisis was a periphery event, and Austria was not in the
+periphery, whatever its banks' exposure to central and eastern Europe was
+thought to imply at the time.
 
 And in 2023--25 the ordering reverses: Austria at
 `r episode(c(2023, 1), c(2025, 4))[["at"]]`, the euro area at
 `r episode(c(2023, 1), c(2025, 4))[["ea"]]`, Germany at
-`r episode(c(2023, 1), c(2025, 4))[["de"]]`. That is the one episode in the
-sample where Austria is decisively the tightest of the three, and it is not a
-spike but a plateau.
+`r episode(c(2023, 1), c(2025, 4))[["de"]]`. Austria is now the most negative
+of the three, which is the one episode in the sample where it is decisively
+the tightest, and it is not a spike but a plateau.
 
 ## The recent tightening
 
@@ -191,11 +205,12 @@ spike but a plateau.
 round(window(index, start = c(2022, 1)), 2)
 ```
 
-The index crosses zero in 2022 Q3 and is above one in ten of the eleven
-quarters from 2023 Q2. That is the longest stretch of tight readings in the
-sample by some way -- the crisis managed three consecutive quarters above one,
-2001 Q4 managed a single one -- and unlike 2008--09 there was no banking
-failure to point at. So it is worth asking what the factor is actually reading.
+The index crosses zero downwards in 2022 Q3 and is below minus one in ten of
+the eleven quarters from 2023 Q2. That is the longest stretch of tight readings
+in the sample by some way -- the crisis managed three consecutive quarters
+below minus one, 2001 Q4 managed a single one -- and unlike 2008--09 there was
+no banking failure to point at. So it is worth asking what the factor is
+actually reading.
 
 ```{r drivers}
 standardised <- ts(scale(at$financial), start = start(at$financial),
@@ -223,7 +238,7 @@ gone:
 
 ```{r term-spread}
 loadings <- factor_loadings(model)
-oriented <- -sign(colMeans(loadings)[["esi"]]) * loadings
+oriented <- sign(colMeans(loadings)[["esi"]]) * loadings
 
 round(oriented[c(1, 40, 80, nrow(oriented)), "spread_term"], 2)
 ```
@@ -235,8 +250,9 @@ weight the series earned in 2000. This one had already discounted it.
 
 The table above ranks inputs by how far they sat from their own averages, which
 says what was extreme rather than what the index was weighting. The term spread
-has just shown the difference: three standard deviations of inversion, and no
-effect. Weighting properly needs both quantities the filter itself uses -- the
+has just shown the difference: `r round(abs(recent[["spread_term"]]), 2)`
+standard deviations of inversion, the second largest deviation in the table,
+and no effect. Weighting properly needs both quantities the filter itself uses -- the
 loading, and how precisely that series is measured, which is what
 `posterior$u_sigma` tracks. Weighting each observation that way and dividing by
 the total precision gives a set of contributions that add up to the index:
@@ -245,7 +261,7 @@ the total precision gives a set of contributions that add up to the index:
 contributions <- function(m) {
   l <- factor_loadings(m)
   v <- m$posterior$u_sigma
-  orientation <- -sign(colMeans(l)[["esi"]])
+  orientation <- sign(colMeans(l)[["esi"]])
 
   # An absent series contributes nothing rather than propagating NA.
   obs <- m$data$x
@@ -279,27 +295,31 @@ moved <- function(cb, from, to) {
 
 y2022 <- moved(contrib, c(2022, 1), c(2022, 4))
 
-sort(y2022, decreasing = TRUE)[1:8]
-sort(y2022)[1:4]
+sort(y2022)[1:8]
+sort(y2022, decreasing = TRUE)[1:4]
 ```
+
+Contributions carry the sign of the index, so a tightening contribution is a
+negative number and the first block above is the tightening one.
 
 2022 is the year Austria's index crossed from very loose to neutral -- the 2021
 average is `r round(mean(window(index, start = c(2021, 1), end = c(2021, 4))), 2)`
 and the 2022 average `r round(mean(window(index, start = c(2022, 1), end = c(2022, 4))), 2)`
 -- and roughly half of that move is the survey balances. Consumer confidence
 alone fell about three standard deviations over the year. Geopolitical risk
-adds `r y2022[["gpr"]]`, which is the invasion of Ukraine entering an Austrian
-index through a global series, and corporate balance sheets most of the rest.
+contributes `r y2022[["gpr"]]`, which is the invasion of Ukraine entering an
+Austrian index through a global series, and corporate balance sheets most of
+the rest.
 
-The instructive entry is the one with the wrong sign. The short rate
-*subtracts* `r abs(y2022[["irate_short"]])` from the 2022 tightening, and the
-euro area's own index behaves the same way:
+The instructive entries are the ones in the second block, which pulled the
+other way. The short rate *offsets* `r abs(y2022[["irate_short"]])` of the 2022
+tightening, and the euro area's own index behaves the same way:
 
 ```{r contributions-ea}
 ea_2022 <- moved(contributions(ea), c(2022, 1), c(2022, 4))
 
-sort(ea_2022, decreasing = TRUE)[1:5]
-sort(ea_2022)[1:3]
+sort(ea_2022)[1:5]
+sort(ea_2022, decreasing = TRUE)[1:3]
 ```
 
 So the largest tightening cycle in the ECB's history enters both indices as a
@@ -315,7 +335,7 @@ The same decomposition puts the earlier drop-group result on a firmer footing.
 Against the same 2021 base, the recent episode is built differently:
 
 ```{r contributions-recent}
-sort(moved(contrib, c(2023, 1), c(2025, 4)), decreasing = TRUE)[1:8]
+sort(moved(contrib, c(2023, 1), c(2025, 4)))[1:8]
 ```
 
 Household credit now sits among the largest contributors, where in 2022 it
@@ -347,7 +367,7 @@ t(rbind("2000-07" = era(c(2000, 2), c(2007, 4)),
         "2023-25" = era(c(2023, 1), c(2025, 4))))
 ```
 
-Half of these loadings are negative, so a signed difference would confuse a
+Seven of these loadings are negative, so a signed difference would confuse a
 negative loading growing with a positive one shrinking. The change in magnitude
 is what says whether a series gained weight in the index:
 
@@ -380,7 +400,7 @@ drop_one <- sapply(colnames(at$financial), function(series) {
   m <- create_fcimodel(y = at$macro, x = at$financial[, keep], p = 4, n = 1)
   m <- add_posterior_coefficients(add_priors(m))
   anchor <- if ("esi" %in% keep) "esi" else "conf_ind"
-  cor(as.numeric(-fci(m, sign_on = anchor)), as.numeric(index))
+  cor(as.numeric(fci(m, sign_on = anchor)), as.numeric(index))
 })
 
 round(sort(drop_one)[1:8], 3)
@@ -405,16 +425,16 @@ groups <- list(
   national    = national)
 
 # The anchor has to survive the drop, so take the first available series that
-# rises with loosening; if every one of them goes, anchor on gpr, which rises
-# with stress, and do not negate.
+# rises with loosening and sign on it directly; if every one of them goes,
+# anchor on gpr, which rises with stress, and negate.
 orient <- function(m, keep) {
   loose <- intersect(c("esi", "conf_ind", "hh_debt", "nfc_assets"), keep)
-  if (length(loose) > 0) -fci(m, sign_on = loose[1]) else fci(m, sign_on = "gpr")
+  if (length(loose) > 0) fci(m, sign_on = loose[1]) else -fci(m, sign_on = "gpr")
 }
 
 summarise <- function(i) {
   data.frame(cor = round(cor(as.numeric(i), as.numeric(index)), 3),
-             peak = as_quarter(as.numeric(time(i))[which.max(i)]),
+             trough = as_quarter(as.numeric(time(i))[which.min(i)]),
              crisis = round(mean(window(i, start = c(2008, 4),
                                         end = c(2009, 3))), 2),
              recent = round(mean(window(i, start = c(2023, 1),
@@ -434,15 +454,15 @@ rbind(dropped, "(none)" = summarise(index))
 Two groups are load-bearing and four are not.
 
 Without the surveys the index is a different series: the correlation falls to
-`r dropped["surveys", "cor"]`, the 2008--09 average more than halves, and the
-peak moves to 2001 Q4. A factor extracted from Austrian balance sheets, rates
-and asset prices alone does not identify the financial crisis as the country's
-worst quarter. That is a real dependence, and it is the caveat to carry away
+`r dropped["surveys", "cor"]`, the 2008--09 average loses more than half its
+depth, and the trough moves to 2001 Q4. A factor extracted from Austrian
+balance sheets, rates and asset prices alone does not identify the financial
+crisis as the country's worst quarter. That is a real dependence, and it is the caveat to carry away
 from this vignette: the Austrian index is to a substantial degree a confidence
 index.
 
-Without credit the peak survives but the recent episode largely does not --
-2023--25 falls to `r dropped["credit", "recent"]` against a full-block
+Without credit the trough survives but the recent episode largely does not --
+2023--25 rises to `r dropped["credit", "recent"]` against a full-block
 `r round(mean(window(index, start = c(2023, 1), end = c(2025, 4))), 2)`. The two
 episodes are made of different things. 2008--09 is legible in surveys and asset
 prices; 2023--25 is a credit event, and an index without a credit block would
@@ -462,7 +482,7 @@ are there.
 model2 <- create_fcimodel(y = at$macro, x = at$financial, p = 4, n = 2)
 model2 <- add_posterior_coefficients(add_priors(model2))
 
-first <- -fci(model2, factor = 1, sign_on = "esi")
+first <- fci(model2, factor = 1, sign_on = "esi")
 second <- fci(model2, factor = 2)
 
 round(c(first_vs_index = cor(first, index),
@@ -494,16 +514,16 @@ grid <- list(
 
 do.call(rbind, lapply(grid, function(d) {
   m <- create_fcimodel(y = at$macro, x = at$financial, p = 4, n = 1)
-  i <- -fci(add_posterior_coefficients(add_priors(m, decay = d)),
+  i <- fci(add_posterior_coefficients(add_priors(m, decay = d)),
             sign_on = "esi")
   data.frame(cor = round(cor(as.numeric(i), as.numeric(index)), 3),
-             peak = as_quarter(as.numeric(time(i))[which.max(i)]),
-             peak_value = round(max(i), 2))
+             trough = as_quarter(as.numeric(time(i))[which.min(i)]),
+             trough_value = round(min(i), 2))
 }))
 ```
 
-Every setting returns the same peak and a correlation of at least 0.99 with the
-baseline, including the one that switches time variation off entirely. The
+Every setting returns the same trough and a correlation of at least 0.99 with
+the baseline, including the one that switches time variation off entirely. The
 Austrian index is not an artefact of the discounting.
 
 ## A recursive index
@@ -537,7 +557,7 @@ vintages_of <- function(d, from) {
     # Not standardised: each fit has its own sample, so its own mean and
     # variance, and rescaling every one separately would put the readings on
     # eighty different scales.
-    -fci(m_o, sign_on = "esi", standardize = FALSE)
+    fci(m_o, sign_on = "esi", standardize = FALSE)
   })
 
   list(origins = origins, vintage = paths, macro = d$macro)
@@ -554,7 +574,7 @@ Each entry of `recursive` is a one-off reading: the value the index took in that
 quarter, estimated with nothing later in the sample.
 
 ```{r recursive-compare}
-full <- -fci(model, sign_on = "esi", standardize = FALSE)
+full <- fci(model, sign_on = "esi", standardize = FALSE)
 compared <- ts.intersect(recursive, full)
 
 round(cor(compared[, 1], compared[, 2]), 3)
@@ -628,7 +648,7 @@ long_model <- create_fcimodel(y = atlong$macro, x = atlong$financial,
                               p = 4, n = 1)
 long_model <- add_posterior_coefficients(add_priors(long_model))
 
-long_index <- -fci(long_model, sign_on = "esi")
+long_index <- fci(long_model, sign_on = "esi")
 ```
 
 The first thing to ask of a differently-sourced index is whether it agrees with
@@ -655,15 +675,15 @@ abline(h = 0, lty = "dashed", col = "grey40")
 ```
 
 ```{r atlong-peaks}
-ord <- order(-long_index)[1:8]
+ord <- order(long_index)[1:8]
 data.frame(quarter = as_quarter(as.numeric(time(long_index))[ord]),
            index = round(as.numeric(long_index)[ord], 2))
 ```
 
-The ranking survives the extension -- `r as_quarter(as.numeric(time(long_index))[which.max(long_index)])`
-is still the peak, and 2001 Q4 still second -- and the new years earn a place in
-it rather than sitting quietly at the start. 1993 Q1 and 1993 Q2 come third and
-sixth:
+The ranking survives the extension -- `r as_quarter(as.numeric(time(long_index))[which.min(long_index)])`
+is still the trough, and 2001 Q4 still second -- and the new years earn a place
+in it rather than sitting quietly at the start. 1993 Q1 and 1993 Q2 come third
+and sixth:
 
 ```{r atlong-1993}
 round(window(long_index, start = c(1993, 1), end = c(1995, 4)), 2)
@@ -707,7 +727,9 @@ t(sapply(c(1, 2, 4, 8), predictive, target = "u"))
 ```
 
 Tighter conditions today mean higher Austrian unemployment later, at every
-horizon tried. The gain is largest where it is most useful: a year ahead, the
+horizon tried. Because tight is negative here, that relationship shows up as a
+*negative* `coef_fci`: a fall in the index is followed by a rise in
+unemployment. The gain is largest where it is most useful: a year ahead, the
 unemployment rate's own persistence explains
 `r predictive("u", 4)[["r2_own"]]` of the variance and the index takes that to
 `r predictive("u", 4)[["r2_with_fci"]]`. At two years the persistence is gone
@@ -718,10 +740,12 @@ accounts for nearly all of the very little that is left.
 t(sapply(c(1, 2, 4), predictive, target = "y"))
 ```
 
-For output growth the sign reverses, as it should, since growth is the outcome
-you want more of: tighter conditions now, weaker growth one and two quarters
-out. By a year ahead there is nothing left to find in either direction, and the
-fits are small throughout because a quarterly growth rate is close to
+For output growth the coefficient turns positive, which is the same economics
+read through the same orientation: growth is the outcome you want more of, so a
+lower index -- tighter conditions now -- goes with weaker growth one and two
+quarters out. By a year ahead there is nothing left to find in either
+direction, and the fits are small throughout because a quarterly growth rate is
+close to
 unforecastable at any horizon by anything -- which is not a defect of the
 index.
 
