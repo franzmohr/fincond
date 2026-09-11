@@ -589,10 +589,16 @@ round(sort(abs(colMeans(factor_loadings(model2, factor = 2))),
 The first factor is the one-factor index back again. The second is orthogonal
 to it and loads on bank lending, equity, the VIX, the dollar and the effective
 exchange rate -- a market-and-external component that the single-factor index
-merges into the domestic credit cycle. Whether separating it is worth doing
-depends on the use; for reproducing the index of Koop and Korobilis (2014),
-`n = 1` is the specification, and nothing here suggests it loses the main
-signal.
+merges into the domestic credit cycle. For reproducing the index of Koop and
+Korobilis (2014), `n = 1` is the specification, and nothing here suggests it
+loses the main signal.
+
+Whether separating the two components is worth doing cannot be settled by
+looking at the index, which is why this section stops here. The two are
+`r round(cor(first, index), 3)` correlated
+and date the same trough, so nothing in the plot or the episode table would
+distinguish them. The out-of-sample section below is where the question gets an
+answer.
 
 ## Robustness
 
@@ -633,7 +639,7 @@ much revisions would move it.
 # through exactly the same recursion. The whole filtered path is kept rather
 # than only its last value: the forecasting section needs the index history
 # each vintage would have had, not just its final reading.
-vintages_of <- function(d, from) {
+vintages_of <- function(d, from, n = 1) {
   origins <- as.numeric(time(window(d$macro, start = from)))
 
   paths <- lapply(origins, function(o) {
@@ -645,7 +651,7 @@ vintages_of <- function(d, from) {
     x_o <- x_o[, colSums(!is.na(x_o)) >= 2, drop = FALSE]
 
     m_o <- create_fcimodel(y = window(d$macro, end = c(yr, qtr)), x = x_o,
-                           p = 4, n = 1)
+                           p = 4, n = n)
     m_o <- add_posterior_coefficients(add_priors(m_o))
 
     # Not standardised: each fit has its own sample, so its own mean and
@@ -858,20 +864,56 @@ covers the regression coefficients as well as the index, since a regression
 fitted on the full sample would leak the future just as surely as a full-sample
 factor would.
 
+Two choices have to be made before that rule can be applied, and neither is
+obvious enough to pass over in silence.
+
+The first is what to forecast. The in-sample tables above took the target to be
+the single quarter `t + h`, which is the natural reading of "a year ahead" and
+the wrong question to put to an index of financial conditions. Conditions
+tighten over a stretch of quarters and unemployment answers over a stretch of
+quarters; asking the index to name the value of one particular quarter loads
+the exercise with quarter-to-quarter movement that nothing in the financial
+block claims to see. What follows takes the target to be the average of the
+variable over `t + 1` to `t + h` -- the path rather than the endpoint. At
+`h = 1` the two coincide, so the first row of every table below is unaffected,
+and they diverge from there.
+
+This is a different question rather than a better answer to the same one, and
+the table after next says what changing it is worth.
+
 ```{r oos-forecast}
-forecasts <- function(target, h, set = vintages) {
+forecasts <- function(target, h, set = oos, cumulative = TRUE) {
   y <- set$macro[, target]
   stamp <- as.numeric(time(y))
 
   rows <- lapply(seq_along(set$origins), function(k) {
     path <- set$vintage[[k]]
-    realised <- which(abs(stamp - (set$origins[k] + h / 4)) < 1e-6)
-    if (length(realised) == 0) return(NULL)
 
-    # Everything below sees only data through this origin.
+    # The h quarters being forecast. All of them are needed for the cumulative
+    # target; only the last of them for the single-quarter one.
+    ahead <- vapply(seq_len(h), function(j) {
+      hit <- which(abs(stamp - (set$origins[k] + j / 4)) < 1e-6)
+      if (length(hit) == 0) NA_integer_ else hit[1]
+    }, integer(1))
+    if (anyNA(ahead)) return(NULL)
+
+    realised <- if (cumulative) {
+      mean(as.numeric(y)[ahead])
+    } else {
+      as.numeric(y)[ahead[h]]
+    }
+
+    # Everything below sees only data through this origin. The regressand is
+    # built the same way as the target: a trailing mean of the h-step lead is
+    # the average over the h quarters that follow each row's own date.
     seen <- window(y, end = end(path))
+    lead <- stats::lag(seen, h)
+    if (cumulative) {
+      lead <- stats::filter(lead, rep(1 / h, h), sides = 1)
+    }
+
     d <- as.data.frame(na.omit(stats::ts.intersect(
-      lead = stats::lag(seen, h), own = seen, fci = path)))
+      lead = lead, own = seen, fci = path)))
     if (nrow(d) < 12) return(NULL)
 
     now <- data.frame(own = last_of(seen), fci = last_of(path))
@@ -879,7 +921,7 @@ forecasts <- function(target, h, set = vintages) {
       as.numeric(stats::predict(stats::lm(f, data = d), newdata = now))
     }
 
-    data.frame(origin = set$origins[k], actual = as.numeric(y)[realised],
+    data.frame(origin = set$origins[k], actual = realised,
                bench = predict_with(lead ~ own),
                fci = predict_with(lead ~ own + fci))
   })
@@ -888,10 +930,11 @@ forecasts <- function(target, h, set = vintages) {
 }
 ```
 
-The benchmark is the same own-lag regression the in-sample tables used, so the
-comparison isolates what the index adds. Two statistics summarise a set of
-forecasts. The ratio of root mean squared errors is what a user would have
-experienced. The second needs a word of explanation:
+The benchmark is the same own-lag regression the in-sample tables used, fitted
+on whichever target is in force, so the comparison still isolates what the
+index adds. Two statistics summarise a set of forecasts. The ratio of root mean
+squared errors is what a user would have experienced. The second needs a word
+of explanation:
 
 ```{r oos-score}
 # Long-run variance, since h-step forecasts overlap for h > 1.
@@ -905,8 +948,8 @@ hac <- function(z, lag) {
   v
 }
 
-score <- function(target, h, set = vintages) {
-  f <- forecasts(target, h, set)
+score <- function(target, h, set = oos, cumulative = TRUE) {
+  f <- forecasts(target, h, set, cumulative)
   e_bench <- f$actual - f$bench
   e_fci <- f$actual - f$fci
 
@@ -925,39 +968,84 @@ score <- function(target, h, set = vintages) {
 }
 ```
 
+The second choice is which model the vintages come from. `n = 2` above
+separated a market-and-external component from the domestic credit cycle and
+left open whether doing so was worth it; this is where that gets an answer.
+Note where the second factor does its work. It is estimated but never used as a
+predictor -- the regressions below take the first factor and nothing else,
+exactly as they would under `n = 1`. What the second factor does is give the
+variation it loads on somewhere else to go, leaving the first factor a cleaner
+reading of the domestic cycle.
+
+```{r oos-vintages}
+# The same expanding window the recursive index used, with the second factor
+# added.
+oos <- vintages_of(at, from = c(2006, 1), n = 2)
+```
+
 ```{r oos-u}
 t(sapply(c(1, 2, 4, 8), score, target = "u"))
 ```
 
-A ratio below one is the index winning. For unemployment it wins at one, two
-and four quarters, by up to `r round(100 * (1 - score("u", 2)[["ratio"]]))`
-per cent of root mean squared error at two quarters, with Clark-West
-statistics around three. At two years it loses, and the statistic is
-`r score("u", 8)[["cw"]]` -- no evidence of anything.
+A ratio below one is the index winning, and for unemployment it wins at all
+four horizons, by up to `r round(100 * (1 - score("u", 4)[["ratio"]]))` per
+cent of root mean squared error at a year. The two columns no longer disagree
+anywhere, which is worth saying because under the two default choices they
+disagreed at exactly the horizon a user cares most about.
 
-The four-quarter row is the one to read carefully, because the two columns
-disagree: a `r score("u", 4)[["ratio"]]` ratio is a small gain, while a
-Clark-West statistic of `r score("u", 4)[["cw"]]` is a confident one. They are
-answering different questions. The statistic asks whether the index belongs in
-the population regression, and corrects for the estimation noise a user
-actually has to pay; the ratio reports what that user got after paying it. At
-one and two quarters the signal is large enough to clear its own estimation
-cost. At four it is real but barely does.
+Both choices are load-bearing, and it is fair to ask how much each is carrying:
+
+```{r oos-decompose}
+one_factor <- vintages_of(at, from = c(2006, 1), n = 1)
+
+step <- function(set, cumulative) {
+  vapply(c(1, 2, 4, 8),
+         function(h) score("u", h, set, cumulative)[["ratio"]], numeric(1))
+}
+
+ratios <- rbind("single quarter, n = 1" = step(one_factor, FALSE),
+                "cumulative, n = 1"     = step(one_factor, TRUE),
+                "cumulative, n = 2"     = step(oos, TRUE))
+colnames(ratios) <- paste0("h=", c(1, 2, 4, 8))
+round(ratios, 3)
+```
+
+The first row is the exercise as the two choices would have been made by
+default, and it is the one with a hole in it: at two years the index loses to
+the own-lag regression outright. Moving to the cumulative target closes that
+hole and does most of the work at a year as well. The second factor then
+improves every horizon by a further point or two, which is a small effect found
+in a place the index itself gives no sign of -- the one-factor and two-factor
+indices are correlated
+`r round(cor(first, index), 3)` and date the same trough. That the two are so nearly the same series and not quite the same
+forecast is the whole reason the question had to be put to the forecasts rather
+than to the index.
+
+Inflation is unmoved by either change. Output growth is the one place where
+the cumulative target does something the single-quarter one did not, and the
+two tables have to be read together rather than separately:
 
 ```{r oos-y}
 t(sapply(c(1, 2, 4), score, target = "y"))
 t(sapply(c(1, 2, 4), score, target = "p"))
 ```
 
-For output growth and inflation there is nothing to speak of. Two of the six
-ratios dip below one, both by less than a point and a half, and the largest
-Clark-West statistic is `r score("p", 4)[["cw"]]`, for inflation a year out --
-which would be marginal on its own and is one row in six. The in-sample
-table's
+Inflation is what it was: every ratio above one and no Clark-West statistic
+worth reporting. Output growth is not. At both two and four
+quarters the index now takes about
+`r round(100 * (1 - score("y", 4)[["ratio"]]))` per cent off the benchmark,
+where the single-quarter target showed nothing at any horizon. The reason is
+the one the target was changed for: a quarterly growth rate is close to
+unforecastable by anything, and averaging four of them leaves a quantity that
+is not.
+
+That is a lead rather than a finding. The Clark-West statistics behind those
+two ratios are `r score("y", 2)[["cw"]]` and `r score("y", 4)[["cw"]]`,
+marginal where the unemployment statistics are decisive, and the longer sample
+below does not reproduce them. The in-sample table's
 `r predictive("y", 1)[["r2_own"]]` to `r predictive("y", 1)[["r2_with_fci"]]`
-gain in output-growth fit does not survive being asked to forecast, which is
-the ordinary fate of in-sample gains that size and the reason this section
-exists.
+gain in output-growth fit did not survive being asked to forecast, and there is
+no reason yet to think this one will either.
 
 A gain concentrated in two crises would be a different claim from a gain earned
 throughout, so it is worth splitting:
@@ -980,11 +1068,11 @@ round(c(n = sum(calm),
 
 It is not a crisis artefact. The 2008--09 origins contribute
 `r round(100 * sum(gain[crisis]) / sum(gain))` per cent of the total gain and
-the 2020 origins `r round(100 * sum(gain[pandemic]) / sum(gain))` per cent,
-between them about a quarter of it from about a sixth of the sample. Drop both
-and the ratio over the remaining `r sum(calm)` quarters is
+the 2020 origins `r round(100 * sum(gain[pandemic]) / sum(gain))` per cent.
+Drop both and the ratio over the remaining `r sum(calm)` quarters is
 `r round(sqrt(mean((f$actual - f$fci)[calm]^2)) / sqrt(mean((f$actual - f$bench)[calm]^2)), 3)`
--- slightly better than the full-sample figure, not worse.
+-- better than the full-sample `r sprintf("%.3f", score("u", 2)[["ratio"]])`,
+not worse.
 
 ```{r oos-plot}
 ts.plot(ts(cumsum(gain), start = c(2006, 1), frequency = 4),
@@ -998,39 +1086,40 @@ once and then flattened would mean an index that called one crisis and was
 otherwise idle. This one climbs through the calm years as well, which is the
 stronger result and the harder one to get.
 
-Eighty forecasts of one country is a thin basis for any of this, and the
-longer sample is the obvious thing to check it against. `atlong` reaches back
-to 1993, so the same recursion started after an equivalent warm-up runs from
-1999 and yields around a third more origins -- and, more usefully, ones drawn
-from a different decade:
+Eighty forecasts of one country is a thin basis for any of this, and it is
+thinner than it looks, because the two choices settled at the top of this
+section were settled by trying the alternatives on these same eighty forecasts.
+`atlong` is therefore the check that matters. It reaches back to 1993, so the
+same recursion started after an equivalent warm-up runs from 1999 and yields
+around a third more origins -- and, more usefully, ones drawn from a different
+decade:
 
 ```{r oos-long}
-long_vintages <- vintages_of(atlong, from = c(1999, 1))
+long_oos <- vintages_of(atlong, from = c(1999, 1), n = 2)
 
-length(long_vintages$origins)
+length(long_oos$origins)
 
-t(sapply(c(1, 2, 4, 8), score, target = "u", set = long_vintages))
+t(sapply(c(1, 2, 4, 8), score, target = "u", set = long_oos))
 ```
 
-The result holds. Every sign is the same, the ratio still bottoms at two
-quarters, the Clark-West statistics are still around three at one and two
-quarters, and two years ahead is still nothing. The gains are slightly smaller
-throughout -- `r score("u", 2, long_vintages)[["ratio"]]` against
-`r score("u", 2)[["ratio"]]` at two quarters -- which is the ordinary direction
-for a result re-run on data it was not found on, and a good deal better than
-the alternative.
-
-The one row that moves is four quarters, where Clark-West falls from
-`r score("u", 4)[["cw"]]` to `r score("u", 4, long_vintages)[["cw"]]`. That
-horizon was already the equivocal one, with the ratio and the statistic
-disagreeing about how much the index was worth; the longer sample resolves the
-disagreement toward the ratio's reading rather than the statistic's.
+The result holds, and so do both of the changes that were not found on this
+sample. Every sign is the same, every horizon still wins, and the two-year row
+is still positive rather than negative. The gains are smaller throughout --
+`r score("u", 4, long_oos)[["ratio"]]` against `r score("u", 4)[["ratio"]]` at
+a year -- which is the ordinary direction for a result re-run on data it was
+not found on, and a good deal better than the alternative.
 
 ```{r oos-long-y}
-t(sapply(c(1, 2, 4), score, target = "y", set = long_vintages))
+t(sapply(c(1, 2, 4), score, target = "y", set = long_oos))
 ```
 
-Output growth stays unforecastable, as it was on the shorter sample.
+Which is the sentence the output-growth lead needed. The ratios are within
+about a point of one at every horizon, and the horizon that carried the
+short-sample result -- a year, at `r score("y", 4)[["ratio"]]` there -- is
+`r score("y", 4, long_oos)[["ratio"]]` here, the wrong side of one. Two
+quarters survives in sign but not in size. Unemployment reproduced on this
+sample and output growth did not, which is the distinction the section was
+built to draw.
 
 Two limits remain, and neither is repairable with this data. There are no
 vintages, so the macro variables are the revised ones throughout: a genuine
