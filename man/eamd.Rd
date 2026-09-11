@@ -112,7 +112,7 @@ then 0.10 rather than 0.85.
 \references{
 Barigozzi, M., & Lissona, C. (2024). EA-MD-QD: Large Euro Area and Euro
 Member Countries Datasets for Macroeconomic Research. Zenodo.
-\doi{10.5281/zenodo.15564854}
+\doi{10.5281/zenodo.10514667}
 
 Caldara, D., & Iacoviello, M. (2022). Measuring geopolitical risk.
 \emph{American Economic Review, 112}(4), 1194--1225.

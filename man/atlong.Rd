@@ -72,7 +72,7 @@ One quarter is blanked, Austria 2005 Q4, by the same simultaneity rule
 \references{
 Barigozzi, M., & Lissona, C. (2024). EA-MD-QD: Large Euro Area and Euro
 Member Countries Datasets for Macroeconomic Research. Zenodo.
-\doi{10.5281/zenodo.15564854}
+\doi{10.5281/zenodo.10514667}
 
 Koop, G., & Korobilis, D. (2014). A new index of financial conditions.
 \emph{European Economic Review, 71}, 101--116.
