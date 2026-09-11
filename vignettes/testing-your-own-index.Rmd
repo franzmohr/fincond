@@ -1,0 +1,400 @@
+---
+title: "Testing an index on your own country"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Testing an index on your own country}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  fig.width = 7,
+  fig.height = 4.5
+)
+```
+
+`vignette("euro-area-and-member-countries")` estimates eleven indices under one
+definition and asks what they say. `vignette("austria-deep-dive")` takes one of
+them apart and asks whether it forecasts. This vignette is that second question
+written as a procedure, so that it can be run somewhere else -- on another of
+the eleven, or on a country this package carries no data for at all.
+
+Nothing below is specific to Austria. Every function takes a dataset and
+returns a number, and the dataset is whatever you assemble. What that has to
+be is two quarterly blocks:
+
+* **`macro`**, a `ts` matrix of output growth, inflation and the unemployment
+  rate, complete over the sample. This is the state of the model, not an input
+  the factor competes with, so it cannot have gaps.
+* **`financial`**, a `ts` matrix of whatever your country publishes. Missing
+  values are allowed and expected: `create_fcimodel()` drops a series over the
+  periods it lacks rather than imputing, so a series that starts halfway
+  through contributes from the date it starts.
+
+```{r setup}
+library("fincond")
+
+set.seed(1234567)
+
+data("eamd")
+```
+
+## The workflow in three functions
+
+The exercise is a recursion, a pair of forecasts at each step of it, and a
+score. Copy these three functions; nothing in them names a country.
+
+The first re-estimates the index once per origin, keeping the whole filtered
+path rather than only its last value, because the forecasting step needs the
+index history each vintage would have had.
+
+```{r vintages}
+vintages_of <- function(d, from, n = 1, anchor = "esi") {
+  origins <- as.numeric(time(window(d$macro, start = from)))
+
+  paths <- lapply(origins, function(o) {
+    yr <- floor(o + 1e-8)
+    qtr <- round((o - yr) * 4) + 1
+
+    x_o <- window(d$financial, end = c(yr, qtr))
+    # Keep only the series that have started by this quarter.
+    x_o <- x_o[, colSums(!is.na(x_o)) >= 2, drop = FALSE]
+
+    m_o <- create_fcimodel(y = window(d$macro, end = c(yr, qtr)), x = x_o,
+                           p = 4, n = n)
+    m_o <- add_posterior_coefficients(add_priors(m_o))
+
+    # Not standardised: each fit has its own sample, so its own mean and
+    # variance, and rescaling every one separately would put the readings on
+    # as many different scales as there are origins.
+    fci(m_o, sign_on = anchor, standardize = FALSE)
+  })
+
+  list(origins = origins, vintage = paths, macro = d$macro)
+}
+
+last_of <- function(z) as.numeric(z)[length(z)]
+```
+
+The second makes two forecasts at each origin: a benchmark on the target's own
+lag, and the same regression with the index added. The rule is that nothing
+estimated at origin `t` may touch data after `t`, which covers the regression
+coefficients as well as the index.
+
+```{r forecasts}
+forecasts <- function(target, h, set, cumulative = TRUE) {
+  y <- set$macro[, target]
+  stamp <- as.numeric(time(y))
+
+  rows <- lapply(seq_along(set$origins), function(k) {
+    path <- set$vintage[[k]]
+
+    ahead <- vapply(seq_len(h), function(j) {
+      hit <- which(abs(stamp - (set$origins[k] + j / 4)) < 1e-6)
+      if (length(hit) == 0) NA_integer_ else hit[1]
+    }, integer(1))
+    if (anyNA(ahead)) return(NULL)
+
+    realised <- if (cumulative) {
+      mean(as.numeric(y)[ahead])
+    } else {
+      as.numeric(y)[ahead[h]]
+    }
+
+    seen <- window(y, end = end(path))
+    lead <- stats::lag(seen, h)
+    if (cumulative) {
+      lead <- stats::filter(lead, rep(1 / h, h), sides = 1)
+    }
+
+    d <- as.data.frame(na.omit(stats::ts.intersect(
+      lead = lead, own = seen, fci = path)))
+    if (nrow(d) < 12) return(NULL)
+
+    now <- data.frame(own = last_of(seen), fci = last_of(path))
+    predict_with <- function(f) {
+      as.numeric(stats::predict(stats::lm(f, data = d), newdata = now))
+    }
+
+    data.frame(origin = set$origins[k], actual = realised,
+               bench = predict_with(lead ~ own),
+               fci = predict_with(lead ~ own + fci))
+  })
+
+  do.call(rbind, rows)
+}
+```
+
+The third scores them. The ratio of root mean squared errors is what a user
+would have experienced. The Clark-West statistic asks whether the index belongs
+in the population regression, correcting for the estimation noise that a
+plain Diebold-Mariano test charges the larger model twice for.
+
+```{r score}
+# Long-run variance, since h-step forecasts overlap for h > 1.
+hac <- function(z, lag) {
+  n <- length(z)
+  z <- z - mean(z)
+  v <- sum(z^2) / n
+  for (l in seq_len(lag)) {
+    v <- v + 2 * (1 - l / (lag + 1)) * sum(z[(l + 1):n] * z[1:(n - l)]) / n
+  }
+  v
+}
+
+score <- function(target, h, set, cumulative = TRUE) {
+  f <- forecasts(target, h, set, cumulative)
+  e_bench <- f$actual - f$bench
+  e_fci <- f$actual - f$fci
+
+  # Clark and West (2007): under the null the larger model estimates a
+  # coefficient that is truly zero, and the noise in doing so inflates its
+  # squared error. The last term subtracts exactly that penalty.
+  adjusted <- e_bench^2 - (e_fci^2 - (f$bench - f$fci)^2)
+
+  c(ratio = sqrt(mean(e_fci^2)) / sqrt(mean(e_bench^2)),
+    cw = mean(adjusted) / sqrt(hac(adjusted, max(h - 1, 0)) / length(adjusted)))
+}
+```
+
+## Running it on eleven countries
+
+The recursion is the expensive part, so build it once per specification and
+score off it as many times as you like. This is the whole exercise for all
+eleven regions, at two factors, on an expanding window from 2006 Q1:
+
+```{r eleven}
+one_factor <- lapply(eamd, vintages_of, from = c(2006, 1), n = 1)
+two_factor <- lapply(eamd, vintages_of, from = c(2006, 1), n = 2)
+
+horizons <- c(1, 2, 4, 8)
+
+ratios <- t(sapply(two_factor, function(s) {
+  vapply(horizons, function(h) score("u", h, s)[["ratio"]], numeric(1))
+}))
+colnames(ratios) <- paste0("h=", horizons)
+round(ratios, 3)
+```
+
+```{r eleven-cw}
+cw <- t(sapply(two_factor, function(s) {
+  vapply(horizons, function(h) score("u", h, s)[["cw"]], numeric(1))
+}))
+colnames(cw) <- paste0("h=", horizons)
+round(cw, 2)
+```
+
+A ratio below one is the index beating the benchmark. It does so in every
+region at one, two and four quarters, and in all but one at two years. The
+spread is wide -- Ireland takes nearly thirty per cent off the benchmark's root
+mean squared error and the Netherlands a fifth, Portugal almost nothing -- and
+the point of showing all eleven rather than a favourable one is that the spread
+is the finding.
+
+Note where Austria sits. The country `vignette("austria-deep-dive")` spends a
+whole vignette on is the second *weakest* of the eleven at one quarter. Whatever
+its index is worth, it is not the case that makes the method look good, which
+is worth knowing before reading its results as a promise about your own
+country.
+
+Portugal is the honest failure: the only region losing at two years, and the
+only one whose Clark-West statistics never clear two. A workflow that could not
+produce that row would not be telling you anything.
+
+## The two choices that matter, and which of them generalises
+
+Two decisions sit inside `vintages_of()` and `forecasts()` above, and the
+Austrian vignette settles both by trying the alternatives. Run the same test
+on your own data rather than inheriting its answers, because one of the two
+transfers and the other does not.
+
+**What to forecast.** `cumulative = TRUE` takes the target to be the average of
+the variable over `t + 1` to `t + h` -- the path -- rather than the single
+quarter `t + h`. Conditions tighten over a stretch of quarters and
+unemployment answers over a stretch of quarters, so asking the index to name
+one particular quarter loads the exercise with movement no financial block
+claims to see.
+
+**How many factors.** `n = 2` estimates a second factor that is never used as a
+predictor; the regressions take the first factor and nothing else. What it does
+is give the variation it loads on somewhere else to go.
+
+```{r choices}
+compare <- function(h) {
+  data.frame(
+    single_n1 = vapply(one_factor, function(s)
+      score("u", h, s, cumulative = FALSE)[["ratio"]], numeric(1)),
+    cumul_n1 = vapply(one_factor, function(s)
+      score("u", h, s)[["ratio"]], numeric(1)),
+    cumul_n2 = vapply(two_factor, function(s)
+      score("u", h, s)[["ratio"]], numeric(1)))
+}
+
+round(compare(4), 3)
+```
+
+```{r choices-count}
+tally <- function(h) {
+  x <- compare(h)
+  c(cumulative_better = sum(x$cumul_n1 < x$single_n1),
+    two_factors_better = sum(x$cumul_n2 < x$cumul_n1),
+    of = nrow(x))
+}
+
+rbind("h = 4" = tally(4), "h = 8" = tally(8))
+```
+
+The cumulative target is a rule. It improves ten of the eleven at both
+horizons; the exception at four quarters is Greece, by two thousandths, and at
+two years it is Portugal, which is the region that fails on every other count
+as well.
+
+The second factor is not a rule. It is close to a coin flip at four quarters
+and only a little better at two years, and the countries it helps are not
+obviously the ones you would have picked. Treat `n` as something to check on
+your own data, and be prepared for the answer to be one.
+
+## What not to spend time on
+
+The Austrian vignette's result came out of a search, and most of the search
+found nothing. Those negatives are worth more to a reader starting out than the
+one setting that worked, because each of them is a week you need not spend.
+
+* **Tuning the estimator.** Lag order `p` in `{1, 2, 4}`, all four forgetting
+  factor settings in `?add_priors`, and dropping the national block: every
+  resulting ratio sat within a hundredth of the baseline. The index is
+  remarkably insensitive to its own tuning parameters.
+* **Selecting on the likelihood.** `posterior$loglik` does not track
+  out-of-sample accuracy. On Austria the specification with the best one step
+  ahead predictive likelihood was not the one with the best forecasts.
+* **A richer benchmark.** Replacing the own-lag regression with an AR(2) or
+  AR(4) makes the *benchmark* worse, not better, and the index still beats it.
+  A weak benchmark is not what is producing these numbers.
+* **More regressors in the second stage.** Adding the other two macro variables
+  to the predictive regression took Austria's one quarter ratio from 0.958 to
+  1.170. Eighty observations do not support it.
+* **Rolling instead of expanding windows.** Worse at every horizon tried.
+* **Pooling the slope across countries.** A panel estimate of the predictive
+  regression, with country fixed effects, computed in real time: a fifth of a
+  point at one and two quarters, clearly worse at four and eight.
+* **A longer warm-up before scoring.** This one is a trap. Requiring 40
+  observations before an origin counts improves Austria's two year ratio from
+  1.048 to 0.996 -- and scoring the short warm-up on that same restricted set
+  of origins gives 0.996 as well. The whole gain was dropping the hard early
+  origins. If you change the scoring sample, compare on the sample, not on the
+  headline.
+
+## Adding a national series
+
+The part of the workflow that genuinely is country-specific is the block. Here
+the euro area members have an advantage, because the ECB publishes a Bank
+Lending Survey for each of them, and credit standards are the one thing
+Koop and Korobilis (2014) had that `eamd` does not: a measure of whether banks
+will lend at all, as against the price of credit or the stock of it outstanding.
+
+The Data Portal API takes a country code, so this is one string away from being
+your country's series. It is not run when this vignette is built, since that
+would need a network connection:
+
+```{r bls-fetch, eval = FALSE}
+# Credit standards on loans to enterprises, net percentage reporting a
+# tightening. Replace "AT" with your own two-letter code; "U2" is the euro area.
+bls_url <- function(country, key = "O.E.Z.B3.ST.S.FNET") {
+  paste0("https://data-api.ecb.europa.eu/service/data/BLS/Q.",
+         country, ".ALL.", key, "?format=csvdata&startPeriod=2000-Q1")
+}
+
+d <- read.csv(bls_url("AT"))
+d <- d[order(d$TIME_PERIOD), ]
+standards <- ts(d$OBS_VALUE,
+                start = c(as.integer(substr(d$TIME_PERIOD[1], 1, 4)),
+                          as.integer(substr(d$TIME_PERIOD[1], 7, 7))),
+                frequency = 4)
+```
+
+Appending it needs one piece of care, because `cbind()` on a `ts` matrix
+prefixes the existing column names, which would rename the anchor `esi` out
+from under `fci()`:
+
+```{r bls-augment, eval = FALSE}
+augment <- function(block, extra) {
+  stamp <- round(as.numeric(stats::time(block)), 6)
+  add <- matrix(NA_real_, nrow(block), length(extra),
+                dimnames = list(NULL, names(extra)))
+  for (nm in names(extra)) {
+    s <- extra[[nm]]
+    pos <- match(round(as.numeric(stats::time(s)), 6), stamp)
+    add[pos[!is.na(pos)], nm] <- as.numeric(s)[!is.na(pos)]
+  }
+  out <- cbind(as.matrix(block), add)
+  colnames(out) <- c(colnames(block), names(extra))
+  stats::ts(out, start = stats::start(block),
+            frequency = stats::frequency(block))
+}
+
+richer <- eamd$at
+richer$financial <- augment(richer$financial, list(std_nfc = standards))
+score("u", 4, vintages_of(richer, from = c(2006, 1), n = 2))
+```
+
+The series is right. It runs from 2003 Q1, its highest reading is 2009 Q1 at
+100 -- every bank in the panel tightening at once -- and that is the quarter
+Austria's index dates as its trough.
+
+The effect on the forecasts is almost nothing. Credit standards for enterprises
+move the four quarter ratio from 0.891 to 0.893; the version asking banks what
+they expect over the next three months, which is the more forecast-shaped
+question, moves it to 0.887. Household standards for house purchase and for
+consumer credit land in between, and adding loan demand alongside standards is
+worse than either.
+
+That is worth stating plainly, because it was the best-motivated candidate in
+the whole exercise. Twenty additions to the Austrian block were tried --
+government balance sheets, short-term corporate credit, economy-wide loans and
+deposits, four more confidence surveys, household mortgage volumes, all four
+Bank Lending Survey standards series and loan demand -- and the largest
+improvement at any horizon from any of them was four thousandths. Several
+bought a better one quarter ratio and paid for it at two years.
+
+The lesson is not that credit standards are uninformative. It is that a
+twenty-six series block summarised by one factor is already saturated: the
+factor is a weighted average, and a twenty-seventh correlated series changes
+the average very little while adding noise to its estimation. If your own block
+is much smaller than this one, the arithmetic is different and a well chosen
+addition may well pay. Test it the way this section does, and judge it at the
+horizons where the index is actually earning its keep rather than at `h = 1`.
+
+## Caveats to carry with you
+
+Three, and none of them is repairable by trying harder.
+
+**The sample is thin.** Eighty origins of one country is not much, and if you
+select a specification on those eighty you have spent them. The Austrian
+vignette checks its two choices on a second, longer Austrian dataset for
+exactly this reason; the eleven-region table above is the other form the check
+can take. Do one or the other before believing a number.
+
+**These are not real-time data.** `eamd` has no vintages, so the macro
+variables are the revised figures throughout. A genuine real-time user would
+have had worse `y`, `p` and `u` than these regressions were given. Where your
+country publishes vintages, use them: it is the one improvement here that would
+make the exercise strictly more honest rather than merely different.
+
+**One country is one observation.** A Clark-West statistic computed over eighty
+overlapping forecasts of a single country is indicative. It is the eleven rows
+agreeing, not any one of them, that makes the case.
+
+## References
+
+Clark, T. E., & West, K. D. (2007). Approximately normal tests for equal
+predictive accuracy in nested models. *Journal of Econometrics, 138*(1),
+291--311.
+
+European Central Bank. Bank Lending Survey.
+<https://data.ecb.europa.eu/data/datasets/BLS>
+
+Koop, G., & Korobilis, D. (2014). A new index of financial conditions. *European
+Economic Review, 71*, 101--116.
