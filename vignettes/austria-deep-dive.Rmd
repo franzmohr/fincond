@@ -864,8 +864,8 @@ covers the regression coefficients as well as the index, since a regression
 fitted on the full sample would leak the future just as surely as a full-sample
 factor would.
 
-Two choices have to be made before that rule can be applied, and neither is
-obvious enough to pass over in silence.
+Three choices have to be made before that rule can be applied, and none of them
+is obvious enough to pass over in silence.
 
 The first is what to forecast. The in-sample tables above took the target to be
 the single quarter `t + h`, which is the natural reading of "a year ahead" and
@@ -878,8 +878,17 @@ variable over `t + 1` to `t + h` -- the path rather than the endpoint. At
 `h = 1` the two coincide, so the first row of every table below is unaffected,
 and they diverge from there.
 
-This is a different question rather than a better answer to the same one, and
-the table after next says what changing it is worth.
+The second is what to forecast *against*, and it is the one that decides
+whether any of this is worth reading. An own-lag regression is the obvious
+benchmark and a surprisingly weak one: the unemployment rate is close to a unit
+root, and estimating its autoregressive coefficient on eighty quarters shrinks
+it below one and pulls the forecast toward a sample mean the level has drifted
+away from. Two alternatives cost nothing to compute. The **recursive mean** of
+the target is what a forecaster with no model at all would say. The **random
+walk** -- today's unemployment rate, carried forward unchanged -- imposes the
+unit root the regression tries to estimate. Both are nested in the regression
+with the index, so all three can be compared on the same footing, and what is
+reported below is the index against whichever of the three did best.
 
 ```{r oos-forecast}
 forecasts <- function(target, h, set = oos, cumulative = TRUE) {
@@ -922,7 +931,9 @@ forecasts <- function(target, h, set = oos, cumulative = TRUE) {
     }
 
     data.frame(origin = set$origins[k], actual = realised,
-               bench = predict_with(lead ~ own),
+               mean = mean(d$lead),          # recursive mean of the target
+               rw = last_of(seen),           # random walk
+               ar = predict_with(lead ~ own),
                fci = predict_with(lead ~ own + fci))
   })
 
@@ -930,11 +941,9 @@ forecasts <- function(target, h, set = oos, cumulative = TRUE) {
 }
 ```
 
-The benchmark is the same own-lag regression the in-sample tables used, fitted
-on whichever target is in force, so the comparison still isolates what the
-index adds. Two statistics summarise a set of forecasts. The ratio of root mean
-squared errors is what a user would have experienced. The second needs a word
-of explanation:
+Two statistics summarise a set of forecasts. The ratio of root mean squared
+errors is what a user would have experienced. The second needs a word of
+explanation:
 
 ```{r oos-score}
 # Long-run variance, since h-step forecasts overlap for h > 1.
@@ -950,25 +959,39 @@ hac <- function(z, lag) {
 
 score <- function(target, h, set = oos, cumulative = TRUE) {
   f <- forecasts(target, h, set, cumulative)
-  e_bench <- f$actual - f$bench
+  rmse <- function(col) sqrt(mean((f$actual - f[[col]])^2))
+
+  competing <- vapply(c("mean", "rw", "ar"), rmse, numeric(1))
+  best <- names(competing)[which.min(competing)]
+
+  e_bench <- f$actual - f[[best]]
   e_fci <- f$actual - f$fci
 
   # Clark and West (2007). A plain Diebold-Mariano test is undersized when the
-  # models are nested, as these are: under the null the larger model estimates
-  # a coefficient that is truly zero, and the noise in doing so inflates its
-  # squared error. The last term subtracts exactly that penalty.
-  adjusted <- e_bench^2 - (e_fci^2 - (f$bench - f$fci)^2)
+  # models are nested, as these are -- the mean sets both slopes to zero, the
+  # random walk fixes the own-lag coefficient at one -- because under the null
+  # the larger model estimates a coefficient that is truly zero and the noise
+  # in doing so inflates its squared error. The last term subtracts exactly
+  # that penalty.
+  adjusted <- e_bench^2 - (e_fci^2 - (f[[best]] - f$fci)^2)
 
-  c(h = h, n = nrow(f),
-    rmse_bench = round(sqrt(mean(e_bench^2)), 3),
-    rmse_fci = round(sqrt(mean(e_fci^2)), 3),
-    ratio = round(sqrt(mean(e_fci^2)) / sqrt(mean(e_bench^2)), 3),
-    cw = round(mean(adjusted) /
-                 sqrt(hac(adjusted, max(h - 1, 0)) / length(adjusted)), 2))
+  data.frame(h = h, n = nrow(f),
+             mean = round(competing[["mean"]], 3),
+             rw = round(competing[["rw"]], 3),
+             ar = round(competing[["ar"]], 3),
+             fci = round(rmse("fci"), 3),
+             best = best,
+             ratio = round(rmse("fci") / min(competing), 3),
+             cw = round(mean(adjusted) /
+                          sqrt(hac(adjusted, max(h - 1, 0)) / length(adjusted)), 2))
+}
+
+scores <- function(target, hs, ...) {
+  do.call(rbind, lapply(hs, function(h) score(target, h, ...)))
 }
 ```
 
-The second choice is which model the vintages come from. `n = 2` above
+The third choice is which model the vintages come from. `n = 2` above
 separated a market-and-external component from the domestic credit cycle and
 left open whether doing so was worth it; this is where that gets an answer.
 Note where the second factor does its work. It is estimated but never used as a
@@ -984,23 +1007,39 @@ oos <- vintages_of(at, from = c(2006, 1), n = 2)
 ```
 
 ```{r oos-u}
-t(sapply(c(1, 2, 4, 8), score, target = "u"))
+scores("u", c(1, 2, 4, 8))
 ```
 
-A ratio below one is the index winning, and for unemployment it wins at all
-four horizons, by up to `r round(100 * (1 - score("u", 4)[["ratio"]]))` per
-cent of root mean squared error at a year. The two columns no longer disagree
-anywhere, which is worth saying because under the two default choices they
-disagreed at exactly the horizon a user cares most about.
+Read the `best` column first. For Austria the own-lag regression is the
+strongest of the three simple benchmarks at one, two and four quarters, which
+is worth knowing because it is not true of the other ten regions:
+`vignette("testing-your-own-index")` finds the random walk beating it almost
+everywhere else. Austrian unemployment mean-reverts where most of the euro
+area's drifts, so the benchmark this vignette would have chosen by habit
+happens to be the right one here.
 
-Both choices are load-bearing, and it is fair to ask how much each is carrying:
+A ratio below one is the index winning, and it wins at one, two and four
+quarters, by up to `r round(100 * (1 - score("u", 4)$ratio))` per cent of root
+mean squared error at a year, with Clark-West statistics above three.
+
+At two years it loses, and the reason is the benchmark rather than the index:
+by `h = 8` the recursive mean is the thing to beat -- Austrian unemployment
+reverts far enough over two years that no autoregression on eighty quarters
+improves on its own average -- and the index does not beat it. Against the
+own-lag regression the same forecasts give a ratio of
+`r round(with(forecasts("u", 8), sqrt(mean((actual - fci)^2)) / sqrt(mean((actual - ar)^2))), 3)`,
+which is the number a benchmark chosen without looking would have reported.
+Two years ahead is where the exercise has nothing.
+
+Both of the remaining choices are load-bearing, and it is fair to ask how much
+each is carrying:
 
 ```{r oos-decompose}
 one_factor <- vintages_of(at, from = c(2006, 1), n = 1)
 
 step <- function(set, cumulative) {
   vapply(c(1, 2, 4, 8),
-         function(h) score("u", h, set, cumulative)[["ratio"]], numeric(1))
+         function(h) score("u", h, set, cumulative)$ratio, numeric(1))
 }
 
 ratios <- rbind("single quarter, n = 1" = step(one_factor, FALSE),
@@ -1011,48 +1050,39 @@ round(ratios, 3)
 ```
 
 The first row is the exercise as the two choices would have been made by
-default, and it is the one with a hole in it: at two years the index loses to
-the own-lag regression outright. Moving to the cumulative target closes that
-hole and does most of the work at a year as well. The second factor then
-improves every horizon by a further point or two, which is a small effect found
-in a place the index itself gives no sign of -- the one-factor and two-factor
-indices are correlated
-`r round(cor(first, index), 3)` and date the same trough. That the two are so nearly the same series and not quite the same
-forecast is the whole reason the question had to be put to the forecasts rather
-than to the index.
+default, and it has a hole in it that begins a year out rather than two: at
+four quarters the index loses to the recursive mean. Moving to the cumulative
+target turns that row from a loss into a win, which is the clearest thing the
+change does anywhere in this vignette. The second factor then improves every
+horizon by a further point or two -- a small effect found in a place the index
+itself gives no sign of, since the one-factor and two-factor indices are
+correlated `r round(cor(first, index), 3)` and date the same trough. Neither
+choice rescues two years.
 
-Inflation is unmoved by either change. Output growth is the one place where
-the cumulative target does something the single-quarter one did not, and the
-two tables have to be read together rather than separately:
+Neither helps the other two variables either, and against this benchmark set
+the reason is plain:
 
 ```{r oos-y}
-t(sapply(c(1, 2, 4), score, target = "y"))
-t(sapply(c(1, 2, 4), score, target = "p"))
+scores("y", c(1, 2, 4))
+scores("p", c(1, 2, 4))
 ```
 
-Inflation is what it was: every ratio above one and no Clark-West statistic
-worth reporting. Output growth is not. At both two and four
-quarters the index now takes about
-`r round(100 * (1 - score("y", 4)[["ratio"]]))` per cent off the benchmark,
-where the single-quarter target showed nothing at any horizon. The reason is
-the one the target was changed for: a quarterly growth rate is close to
-unforecastable by anything, and averaging four of them leaves a quantity that
-is not.
-
-That is a lead rather than a finding. The Clark-West statistics behind those
-two ratios are `r score("y", 2)[["cw"]]` and `r score("y", 4)[["cw"]]`,
-marginal where the unemployment statistics are decisive, and the longer sample
-below does not reproduce them. The in-sample table's
-`r predictive("y", 1)[["r2_own"]]` to `r predictive("y", 1)[["r2_with_fci"]]`
-gain in output-growth fit did not survive being asked to forecast, and there is
-no reason yet to think this one will either.
+For output growth and inflation the recursive mean wins every row, and by a
+wide margin for growth: a quarterly growth rate has almost no persistence, so
+its own average beats anything estimated on it, and the index inherits the
+autoregression's handicap rather than curing it. An earlier draft of this
+section reported a modest output-growth gain at two and four quarters. That was
+measured against the own-lag regression alone and did not survive the
+comparison being widened -- which is the same lesson the `best` column teaches
+in the unemployment table, arriving here as a correction rather than a caveat.
 
 A gain concentrated in two crises would be a different claim from a gain earned
 throughout, so it is worth splitting:
 
 ```{r oos-episodes}
 f <- forecasts("u", 2)
-gain <- (f$actual - f$bench)^2 - (f$actual - f$fci)^2
+bench <- score("u", 2)$best
+gain <- (f$actual - f[[bench]])^2 - (f$actual - f$fci)^2
 
 crisis <- f$origin >= 2008 & f$origin < 2010
 pandemic <- f$origin >= 2020 & f$origin < 2021
@@ -1063,15 +1093,15 @@ round(c(share_2008_09 = sum(gain[crisis]) / sum(gain),
 
 round(c(n = sum(calm),
         ratio_excluding_both = sqrt(mean((f$actual - f$fci)[calm]^2)) /
-          sqrt(mean((f$actual - f$bench)[calm]^2))), 3)
+          sqrt(mean((f$actual - f[[bench]])[calm]^2))), 3)
 ```
 
 It is not a crisis artefact. The 2008--09 origins contribute
 `r round(100 * sum(gain[crisis]) / sum(gain))` per cent of the total gain and
 the 2020 origins `r round(100 * sum(gain[pandemic]) / sum(gain))` per cent.
 Drop both and the ratio over the remaining `r sum(calm)` quarters is
-`r round(sqrt(mean((f$actual - f$fci)[calm]^2)) / sqrt(mean((f$actual - f$bench)[calm]^2)), 3)`
--- better than the full-sample `r sprintf("%.3f", score("u", 2)[["ratio"]])`,
+`r round(sqrt(mean((f$actual - f$fci)[calm]^2)) / sqrt(mean((f$actual - f[[bench]])[calm]^2)), 3)`
+-- better than the full-sample `r sprintf("%.3f", score("u", 2)$ratio)`,
 not worse.
 
 ```{r oos-plot}
@@ -1087,8 +1117,8 @@ otherwise idle. This one climbs through the calm years as well, which is the
 stronger result and the harder one to get.
 
 Eighty forecasts of one country is a thin basis for any of this, and it is
-thinner than it looks, because the two choices settled at the top of this
-section were settled by trying the alternatives on these same eighty forecasts.
+thinner than it looks, because the choices settled at the top of this section
+were settled by trying the alternatives on these same eighty forecasts.
 `atlong` is therefore the check that matters. It reaches back to 1993, so the
 same recursion started after an equivalent warm-up runs from 1999 and yields
 around a third more origins -- and, more usefully, ones drawn from a different
@@ -1099,36 +1129,35 @@ long_oos <- vintages_of(atlong, from = c(1999, 1), n = 2)
 
 length(long_oos$origins)
 
-t(sapply(c(1, 2, 4, 8), score, target = "u", set = long_oos))
+scores("u", c(1, 2, 4, 8), set = long_oos)
 ```
 
-The result holds, and so do both of the changes that were not found on this
-sample. Every sign is the same, every horizon still wins, and the two-year row
-is still positive rather than negative. The gains are smaller throughout --
-`r score("u", 4, long_oos)[["ratio"]]` against `r score("u", 4)[["ratio"]]` at
-a year -- which is the ordinary direction for a result re-run on data it was
-not found on, and a good deal better than the alternative.
+The result holds where it held. Every sign is the same at one, two and four
+quarters, and on this sample the own-lag regression is the best of the three
+benchmarks at two years as well, so the two-year row is a narrow win rather
+than the loss `eamd` reports -- a difference in which benchmark the extra
+decade favours, not in what the index does. The gains are smaller throughout --
+`r score("u", 4, long_oos)$ratio` against `r score("u", 4)$ratio` at a year --
+which is the ordinary direction for a result re-run on data it was not found
+on, and a good deal better than the alternative.
 
 ```{r oos-long-y}
-t(sapply(c(1, 2, 4), score, target = "y", set = long_oos))
+scores("y", c(1, 2, 4), set = long_oos)
 ```
 
-Which is the sentence the output-growth lead needed. The ratios are within
-about a point of one at every horizon, and the horizon that carried the
-short-sample result -- a year, at `r score("y", 4)[["ratio"]]` there -- is
-`r score("y", 4, long_oos)[["ratio"]]` here, the wrong side of one. Two
-quarters survives in sign but not in size. Unemployment reproduced on this
-sample and output growth did not, which is the distinction the section was
-built to draw.
+Output growth is unforecastable on this sample too, and by the same margin: the
+recursive mean wins every row.
 
-Two limits remain, and neither is repairable with this data. There are no
+Three limits remain, and none is repairable with this data. There are no
 vintages, so the macro variables are the revised ones throughout: a genuine
 real-time user would have had worse `y`, `p` and `u` than these regressions
 were given, and the paper's own real-time exercise -- which neither dataset here
-can support -- is the one that settles how much that matters. And this is still
-one country, so the Clark-West statistics are indicative rather than decisive
-however many quarters they are computed over. See Koop and Korobilis (2014,
-sec. 5) for the fuller treatment.
+can support -- is the one that settles how much that matters. The benchmark set
+is three simple rules; a forecaster with a proper time series model of Austrian
+unemployment would be a harder thing to beat than any of them, and this
+vignette does not build one. And this is still one country, so the Clark-West
+statistics are indicative rather than decisive however many quarters they are
+computed over. See Koop and Korobilis (2014, sec. 5) for the fuller treatment.
 
 ## References
 
