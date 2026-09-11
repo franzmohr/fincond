@@ -1161,9 +1161,9 @@ computed over. See Koop and Korobilis (2014, sec. 5) for the fuller treatment.
 
 ## References
 
-Barigozzi, M., & Lissona, C. EA-MD-QD: Large euro area and euro member countries
-datasets for macroeconomic research.
-<https://github.com/BarigozziMatteo/EA-MD-QD>
+Barigozzi, M., & Lissona, C. (2024). EA-MD-QD: Large Euro Area and Euro Member
+Countries Datasets for Macroeconomic Research. Zenodo.
+<https://doi.org/10.5281/zenodo.15564854>
 
 Caldara, D., & Iacoviello, M. (2022). Measuring geopolitical risk. *American
 Economic Review, 112*(4), 1194--1225.

@@ -138,9 +138,9 @@
 #'
 #' @references
 #'
-#' Barigozzi, M., & Lissona, C. EA-MD-QD: Large euro area and euro member
-#' countries datasets for macroeconomic research.
-#' \url{https://github.com/BarigozziMatteo/EA-MD-QD}
+#' Barigozzi, M., & Lissona, C. (2024). EA-MD-QD: Large Euro Area and Euro
+#' Member Countries Datasets for Macroeconomic Research. Zenodo.
+#' \doi{10.5281/zenodo.15564854}
 #'
 #' Caldara, D., & Iacoviello, M. (2022). Measuring geopolitical risk.
 #' \emph{American Economic Review, 112}(4), 1194--1225.
@@ -217,9 +217,9 @@
 #'
 #' @references
 #'
-#' Barigozzi, M., & Lissona, C. EA-MD-QD: Large euro area and euro member
-#' countries datasets for macroeconomic research.
-#' \url{https://github.com/BarigozziMatteo/EA-MD-QD}
+#' Barigozzi, M., & Lissona, C. (2024). EA-MD-QD: Large Euro Area and Euro
+#' Member Countries Datasets for Macroeconomic Research. Zenodo.
+#' \doi{10.5281/zenodo.15564854}
 #'
 #' Koop, G., & Korobilis, D. (2014). A new index of financial conditions.
 #' \emph{European Economic Review, 71}, 101--116.
