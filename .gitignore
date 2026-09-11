@@ -14,8 +14,3 @@ data-raw/*
 !data-raw/*.R
 inst/doc
 vignettes/*.html
-paper/*.pdf
-paper/*.aux
-paper/*.log
-paper/*.out
-paper/*.rds
