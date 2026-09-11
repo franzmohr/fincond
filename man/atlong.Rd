@@ -21,7 +21,7 @@ A list of two time-series objects:
 }
 \source{
 AustriaMacroData, \url{https://github.com/franzmohr/AustriaMacroData};
-EA-MD-QD, release 2026-04, of Barigozzi and Lissona, for the sectoral balance
+EA-MD-QD, release 2026-08, of Barigozzi and Lissona, for the sectoral balance
 sheets and the money-market spread from 2000; and series \code{VIXCLS} and
 \code{AUTCPIALLQINMEI} from FRED. See \code{data-raw/atlong.R} for how each
 column is built.

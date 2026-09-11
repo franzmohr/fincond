@@ -97,9 +97,14 @@ identical(as.numeric(fci(model, sign_on = "esi")),
           as.numeric(-fci(model, sign_on = "vix")))
 ```
 
-Austria is a country where either anchor would have served. The VIX loads
-`r round(colMeans(factor_loadings(model))[["vix"]], 2)` with the right sign
-here, so `-fci(model, sign_on = "vix")` returns exactly the same index. The
+Austria is a country where either anchor would have served. The sign of a
+factor is arbitrary, so the sign of any one loading is too and only their
+relative signs mean anything; what matters here is that the VIX loads against
+the sentiment indicator, at about half its weight --
+`r round(abs(colMeans(factor_loadings(model))[["vix"]]), 2)` against
+`r round(abs(colMeans(factor_loadings(model))[["esi"]]), 2)` -- so
+`-fci(model, sign_on = "vix")` returns exactly the same index, as the check
+above confirms. The
 sibling vignette cannot rely on that, because the VIX loads weakly or with the
 wrong sign in several members and so cannot anchor all eleven at once; `esi` is
 the anchor that works everywhere, and it is kept here too.

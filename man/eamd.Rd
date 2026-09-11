@@ -16,15 +16,17 @@ two time-series objects:
   each other; see 'Details' for the four regions that do not have all of
   them, and for the two that have more. Missing values are carried through to
   the filter by \code{\link{create_fcimodel}} rather than imputed.}
-  \item{macro}{Three macroeconomic variables, 2000 Q2 to 2025 Q4: output
-  growth (\code{y}), inflation (\code{p}) and the unemployment rate
-  (\code{u}), in the units \code{koop$macro} uses. Unlike \code{koop} there
-  are no real-time vintages -- neither source publishes them -- so this is a
-  single, fully revised series rather than a list.}
+  \item{macro}{Three macroeconomic variables from 2000 Q2: output growth
+  (\code{y}), inflation (\code{p}) and the unemployment rate (\code{u}), in
+  the units \code{koop$macro} uses. The blocks do not all end together,
+  because national accounts are not all published on the same schedule: six
+  regions run to 2026 Q2 and five to 2026 Q1 in this release. Unlike
+  \code{koop} there are no real-time vintages -- neither source publishes
+  them -- so this is a single, fully revised series rather than a list.}
 }
 }
 \source{
-EA-MD-QD, release 2026-04, of Barigozzi and Lissona; the Austrian and
+EA-MD-QD, release 2026-08, of Barigozzi and Lissona; the Austrian and
 German panels of \url{https://github.com/franzmohr/AustriaMacroData}; and
 series \code{VIXCLS} from FRED,
 \url{https://fred.stlouisfed.org/series/VIXCLS}. See \code{data-raw/eamd.R}

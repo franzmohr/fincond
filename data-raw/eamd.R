@@ -4,7 +4,7 @@
 #
 # Three sources are combined.
 #
-#  1. EA-MD-QD (Barigozzi and Lissona), release 2026-04. One workbook per
+#  1. EA-MD-QD (Barigozzi and Lissona), release 2026-08. One workbook per
 #     region -- EAdata.xlsx, ATdata.xlsx, ... -- each with a "data" and an
 #     "info" sheet. It supplies the macroeconomic block for all eleven regions
 #     and most of the financial block.
@@ -57,7 +57,7 @@ rm(list = ls())
 library(dplyr)
 library(readxl)
 
-md_qd <- "data-raw/ea-md-qd/extracted/EA-MD-QD-2026-04"
+md_qd <- "data-raw/ea-md-qd/extracted/EA-MD-QD-2026-08"
 amd_dir <- "data-raw/austria-macro-data"
 fred_dir <- "data-raw/fred"
 

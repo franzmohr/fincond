@@ -47,7 +47,7 @@ rm(list = ls())
 library(dplyr)
 library(readxl)
 
-md_qd <- "data-raw/ea-md-qd/extracted/EA-MD-QD-2026-04"
+md_qd <- "data-raw/ea-md-qd/extracted/EA-MD-QD-2026-08"
 amd_dir <- "data-raw/austria-macro-data"
 fred_dir <- "data-raw/fred"
 

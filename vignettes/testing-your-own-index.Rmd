@@ -278,9 +278,9 @@ colnames(wins) <- paste0("h=", horizons)
 wins
 ```
 
-The cumulative target earns its place at a year, where it roughly doubles the
-count of regions in which the index beats the best benchmark. It changes
-nothing at one quarter, where the two targets are identical by construction,
+The cumulative target earns its place at a year, where it triples the count of
+regions in which the index beats the best benchmark. It changes nothing at one
+quarter, where the two targets are identical by construction,
 and it cannot rescue two years, where nothing does. The second factor is worth
 little on this evidence and is not worth assuming; check it on your own data
 and be prepared for the answer to be one.
@@ -295,10 +295,12 @@ worth more to a reader starting out than the settings that worked.
   resulting ratio sat within a hundredth of the baseline.
 * **Selecting on the likelihood.** `posterior$loglik` does not track
   out-of-sample accuracy.
-* **Widening the autoregression.** AR(2) and AR(4) benchmarks are *worse* than
-  AR(1), not better, which is a symptom of the same disease: more coefficients
-  estimated on a near-unit-root series in a short sample. Adding lags is not a
-  substitute for imposing the unit root.
+* **Assuming AR(1) is the worst case.** It is not. Adding lags improves the
+  autoregression at short horizons, enough that an AR(2) beats the random walk
+  at one and two quarters in six and seven of the eleven regions. The index
+  still wins there against the stronger benchmark, and still loses at four and
+  eight quarters, where the random walk beats every autoregression we tried.
+  If your own target is persistent, put an AR(2) in the benchmark set as well.
 * **More regressors in the second stage.** Adding the other two macro variables
   to the predictive regression took Austria's one quarter ratio from 0.958 to
   1.170. Eighty observations do not support it.
