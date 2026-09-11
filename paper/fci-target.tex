@@ -2,6 +2,7 @@
 \usepackage[margin=1in]{geometry}
 \usepackage{booktabs}
 \usepackage{amsmath}
+\usepackage{amssymb}
 \usepackage{natbib}
 \usepackage[hidelinks]{hyperref}
 \usepackage{setspace}
@@ -10,7 +11,7 @@
 \title{Benchmark choice and the apparent long-horizon\\
 predictive content of financial conditions indices}
 
-\author{Franz X. Mohr\thanks{Replication code and data are available in the
+\author{Franz X. Mohr\thanks{Replication code and data are in the
 \texttt{fincond} R package, \url{https://github.com/franzmohr/fincond}.}}
 
 \date{\today}
@@ -20,24 +21,31 @@ predictive content of financial conditions indices}
 \maketitle
 
 \begin{abstract}
-\noindent Financial conditions indices are usually evaluated against an
-autoregressive benchmark. For a near-unit-root target in a short sample that
-benchmark is weak, and it becomes weaker as the horizon lengthens. Estimating
-the time-varying-parameter FAVAR of \citet{koop2014} recursively for the euro
-area and ten member countries, we find that a random walk beats the own-lag
-regression in ten of eleven regions at every horizon, by a median of 33\% of
-root mean squared error at two years. Against the better of a random walk and a
-recursive mean, the index improves unemployment forecasts one and two quarters
-ahead in ten and nine of the eleven regions, but at two years it loses in all
-eleven. Against the own-lag regression alone the same forecasts appear to win at
-every horizon. Long-horizon predictive content reported against autoregressive
-benchmarks should be treated as a statement about the benchmark.
+\noindent Financial conditions indices are routinely evaluated against a
+recursively estimated autoregression. For a near-unit-root target in a short
+sample that benchmark is biased toward the sample mean, and the bias compounds
+with the forecast horizon. We show analytically and by simulation that a random
+walk should be the better benchmark once $1-\rho$ falls below $(1+3\rho)/T$,
+and we confirm the prediction on eleven euro-area regions: the random walk
+forecasts the unemployment rate more accurately than the autoregression in ten
+of them at every horizon, by a median of 33\% of root mean squared error at two
+years. The consequences for measurement are large. Against the better of a
+random walk and a recursive mean, a financial conditions index improves
+unemployment forecasts one and two quarters ahead --- in ten and nine of the
+eleven regions, with panel Clark--West statistics of 4.0 and 3.2 --- but at two
+years it loses in every region and the panel statistic is $-1.0$. Against the
+estimated autoregression alone, the same forecasts appear to win at every
+horizon, with a panel statistic of 2.3 at two years. The test is not at fault:
+in simulation its rejection rate against the autoregression is insensitive to
+the target's persistence, while the forecaster's verdict reverses. A test of
+whether a variable enters a regression is not a test of whether that regression
+is worth using.
 
 \vspace{1em}
 \noindent \textbf{Keywords:} financial conditions index; forecast evaluation;
-benchmark; dynamic factor model; euro area
+benchmark selection; near-unit-root bias; euro area
 
-\noindent \textbf{JEL:} C53, E44, E37
+\noindent \textbf{JEL:} C53, C22, E44, E37
 \end{abstract}
 
 \section{Introduction}
@@ -46,105 +54,321 @@ Financial conditions indices compress many financial series into one number,
 and the case for them rests on whether that number helps forecast real
 activity. The standard evaluation regresses a target variable at $t+h$ on its
 own lag and the index, and compares the resulting forecast errors with those of
-the same regression without it \citep{koop2014, hatzius2010}.
+the same regression estimated without it
+\citep{koop2014, hatzius2010, stock2002}.
 
-The own-lag regression is a natural benchmark and a weak one. An unemployment
-rate is close to a unit root. Estimating its autoregressive coefficient on
-eighty quarters shrinks the estimate below one and pulls the forecast toward a
-sample mean that the level has drifted away from, and the induced bias
-compounds with the horizon. A random walk, which imposes the unit root rather
-than estimating it, does not have this problem.
+The own-lag regression is the natural benchmark and, for this class of target,
+a poor one. An unemployment rate is close to a unit root. Least squares
+estimation of an autoregressive coefficient is biased downward in finite
+samples \citep{marriott1954, kendall1954}, and the resulting forecast is pulled
+toward a sample mean from which the level has drifted away. Iterating that
+attenuated coefficient forward makes the distortion compound with the horizon.
+A random walk, which imposes the unit root rather than estimating it, is wrong
+by $1-\rho^h$ and does not pay the estimation cost at all.
 
-This note asks what the benchmark is worth. Using one index, one model and one
-dataset for eleven euro-area regions, we compare the index against three simple
-benchmarks: the recursive mean of the target, a random walk, and the own-lag
-regression. The random walk is the strongest of the three in ten of the eleven
-regions at every horizon, and its advantage over the own-lag regression widens
-from a median of 4\% of root mean squared error at one quarter to 33\% at two
-years.
+This paper asks what that choice is worth, and answers in three steps.
 
-The consequences for what the index is judged to be worth are large. Against
-the better of the two competent benchmarks, the index improves on unemployment
-forecasts at one and two quarters --- in ten and nine of eleven regions, with
-Clark--West statistics clearing the one-sided five per cent value in eleven and
-ten --- and loses in all eleven regions at two years. Against the own-lag
-regression alone, the same forecasts appear to win at one, two, four and eight
-quarters in eleven, eleven, eleven and ten regions respectively.
+First, we characterise when the random walk should be preferred. Combining the
+standard small-sample bias with the geometry of an iterated forecast gives a
+criterion: the estimated autoregression is the better benchmark only when
+$1-\rho$ exceeds $(1+3\rho)/T$, which at $T = 80$ means $\rho$ below about
+$0.95$. A Monte Carlo locates the crossover between $\rho = 0.90$ and
+$\rho = 0.95$, where the criterion puts it.
 
-We read this as a positive result about short horizons and a negative one about
-long horizons. Financial conditions carry genuine information about
-unemployment one and two quarters out, across a panel of countries and against
-a benchmark that is hard to beat. Reported evidence of predictive content at
-horizons of a year or more, when it rests on an autoregressive benchmark, may be
-measuring the benchmark's deterioration rather than the index's information.
+Second, we show the criterion binds in practice. Across the euro area and ten
+member countries, the random walk forecasts the unemployment rate more
+accurately than a recursively estimated own-lag regression in ten of the eleven
+regions at every horizon, and its margin widens from a median of 4\% of root
+mean squared error at one quarter to 33\% at two years. The single exception,
+Austria, is the one region whose unemployment rate mean-reverts over this
+sample rather than drifting --- that is, the one region below the crossover.
 
-\section{Method}
+Third, we show what this does to the measured value of an index. Against the
+better of the two competent benchmarks, the index of \citet{koop2014} improves
+unemployment forecasts at one and two quarters --- in ten and nine of eleven
+regions, with panel Clark--West statistics of $4.0$ and $3.2$ --- and loses in
+all eleven regions at two years, where the panel statistic is $-1.0$. Against
+the estimated autoregression alone, the same forecasts appear to win at one,
+two, four and eight quarters in eleven, eleven, eleven and ten regions, with a
+panel statistic of $2.3$ at two years.
+
+We emphasise what this is not. It is not a finding that the Clark--West test
+malfunctions. The test asks whether the index belongs in the population
+regression that also contains an estimated own lag, and the answer is yes. Our
+simulations show its rejection rate against that benchmark to be essentially
+flat in the target's persistence, while the forecaster's verdict reverses over
+the same range. Both facts are correct simultaneously, because they answer
+different questions. The difficulty is that a model containing a badly
+estimated autoregressive coefficient is not a useful yardstick for a forecaster
+who could impose a unit root at no cost.
+
+Our positive finding is narrower than the literature's and, we would argue,
+more secure. Financial conditions carry genuine information about unemployment
+one and two quarters ahead, across eleven countries, against a benchmark that
+is hard to beat, and under inference that accounts for the cross-sectional
+dependence among them. Evidence of predictive content at a year or more, when
+it rests on an autoregressive benchmark, may be measuring the benchmark's
+deterioration rather than the index's information.
+
+\section{Evaluation design}
+
+\subsection{The index}
 
 Let $y_t$ collect output growth, inflation and the unemployment rate, and $x_t$
-the financial series. The index is the first factor $f_t$ of the FAVAR of
-\citet{koop2014},
+the financial series. The index is the first factor $f_t$ of the
+time-varying-parameter FAVAR of \citet{koop2014},
 \begin{align}
 x_t &= \Lambda^y_t y_t + \Lambda^f_t f_t + e_t, \qquad e_t \sim N(0, V_t), \\
 z_t &= \sum\nolimits_{i=1}^{p} B_{it} z_{t-i} + u_t, \qquad u_t \sim N(0, Q_t),
 \end{align}
 with $z_t = (y_t', f_t')'$. Loadings and transition coefficients follow random
-walks; the error covariances and the drift are governed by forgetting factors
-rather than estimated variances, so the model follows from two Kalman passes
-rather than from simulation. We use the authors' settings throughout ($p = 4$,
-one factor, forgetting factors $0.96$, $0.96$, $0.99$, $0.99$) and fix the sign
-of the factor on the economic sentiment indicator.
+walks; the two error covariances and the drift are governed by forgetting
+factors rather than by estimated variances, so the model follows from two
+Kalman passes rather than from posterior simulation. We use the authors'
+settings throughout ($p = 4$, one factor, forgetting factors $0.96$, $0.96$,
+$0.99$, $0.99$) and fix the sign of the factor on the economic sentiment
+indicator. The macroeconomic block enters the measurement equation, so the
+factor is by construction what the financial series say beyond $y_t$.
 
-The evaluation is recursive. At each origin $t$ the model is re-estimated on
-data through $t$ only, giving the index path a user would have had at that
-date. Four forecasts of the target $w_{t+h}$ are then formed, each using data
-through $t$ only:
+Nothing below depends on this particular index. We use it because it is a
+standard construction with a public implementation, and because holding the
+index fixed is what isolates the benchmark.
+
+\subsection{Recursive forecasts and benchmarks}
+
+The evaluation is recursive. At each origin $t$ the factor model is
+re-estimated on data through $t$ only, yielding the index path a user would
+have had at that date. Four forecasts of the target $w_{t+h}$ are then formed,
+each using data through $t$ only:
 \begin{align}
-\text{mean:} \quad & \widehat{w} = \textstyle\frac{1}{t-h}\sum_{s} w_{s}, &
-\text{random walk:} \quad & \widehat{w} = u_t, \\
-\text{own lag:} \quad & \widehat{w} = \hat\alpha + \hat\beta u_t, &
-\text{index:} \quad & \widehat{w} = \hat\alpha + \hat\beta u_t + \hat\gamma f_t .
+\text{recursive mean:} \quad & \widehat{w} = \textstyle\frac{1}{t-h}\sum_{s \le t-h} w_{s},
+& \text{random walk:} \quad & \widehat{w} = u_t, \\
+\text{own lag:} \quad & \widehat{w} = \hat\alpha + \hat\beta u_t,
+& \text{index:} \quad & \widehat{w} = \hat\alpha + \hat\beta u_t + \hat\gamma f_t .
 \label{eq:pred}
 \end{align}
-Nothing estimated at $t$ uses data after $t$, the regression coefficients
-included. All three benchmarks are nested in the index regression: the mean
-sets $\beta = \gamma = 0$, the random walk fixes $\alpha = 0$, $\beta = 1$,
-$\gamma = 0$.
+The regression coefficients are re-estimated at every origin on the same
+restricted information set, so nothing used at $t$ postdates $t$. All three
+benchmarks are nested in the index regression: the recursive mean sets
+$\beta = \gamma = 0$, the random walk fixes $\alpha = 0$, $\beta = 1$,
+$\gamma = 0$. We report the index against whichever benchmark achieved the
+lowest root mean squared error in each cell, and separately against the own-lag
+regression alone.
 
 We take the target to be the average of the variable over $t+1, \dots, t+h$
-rather than its value in the single quarter $t+h$. The two coincide at $h = 1$.
-Section~\ref{sec:robust} reports the single-quarter target, which is less
-favourable to the index at every horizon; using the path target makes the
-negative result below conservative.
+rather than its value in the single quarter $t+h$. Financial conditions tighten
+and loosen over stretches of quarters and unemployment responds over stretches
+of quarters, so the path is the quantity an index plausibly speaks to; the two
+coincide at $h = 1$. Section~\ref{sec:robust} reports the single-quarter
+target, which is less favourable to the index at every horizon beyond the
+first, so this choice makes the negative result conservative rather than the
+reverse.
 
-We report the ratio of the index regression's root mean squared forecast error
-to that of the best-performing benchmark, and the statistic of
-\citet{clark2007}. Because the models are nested, an unadjusted
-Diebold--Mariano test is undersized: under the null the larger model estimates
-a coefficient that is truly zero, and the noise in doing so inflates its
-squared error. The Clark--West adjustment removes that penalty. Overlapping
-$h$-step forecasts are handled with a Bartlett kernel of $h-1$ lags, and we use
-the one-sided normal critical value of $1.645$.
+\subsection{Inference}
+
+Because the models are nested, an unadjusted \citet{diebold1995} test is
+undersized: under the null the larger model estimates a coefficient that is
+truly zero, and the noise in doing so inflates its squared error.
+\citet{clark2007} remove that penalty, comparing
+\begin{equation}
+\hat d_t = \big(w_{t+h} - \widehat{w}^{\,b}_{t+h}\big)^2
+ - \Big[\big(w_{t+h} - \widehat{w}^{\,f}_{t+h}\big)^2
+ - \big(\widehat{w}^{\,b}_{t+h} - \widehat{w}^{\,f}_{t+h}\big)^2\Big]
+\end{equation}
+against zero, where $b$ denotes the benchmark and $f$ the index regression.
+Overlapping $h$-step forecasts are handled with a Bartlett kernel of $h-1$
+lags, and we use the one-sided normal critical value of $1.645$.
+
+Eleven euro-area regions are not eleven independent experiments. They share a
+monetary policy and much of a business cycle, and the average pairwise
+correlation of the $\hat d_t$ across regions runs from $0.35$ at one quarter to
+$0.04$ at two years. Counting individual rejections would overstate the
+evidence. We instead average the adjusted differentials across regions at each
+origin and test the average,
+\begin{equation}
+\bar d_t = \frac{1}{N} \sum_{i=1}^{N} \hat d_{i,t}, \qquad
+t = \frac{\bar d}{\sqrt{\widehat{\mathrm{lrv}}(\bar d_t)/T_o}},
+\end{equation}
+with $T_o$ the number of common origins. Averaging first absorbs the common
+component into the time-series variance of $\bar d_t$, so the statistic does
+not treat correlated countries as independent. We report both the per-region
+counts and this panel statistic.
 
 \section{Data}
 
 We use EA-MD-QD \citep{barigozzi2024}, which provides quarterly series for the
 euro area aggregate and ten member countries on a common definition from
-2000\,Q1. The financial block has twenty-two series per region: equity and
-house prices, effective and dollar exchange rates, short and long interest
-rates and three spreads, sectoral balance sheets for households, firms and
-banks, four confidence balances and two global risk measures. Austria and
-Germany carry four national series in addition. Forecast origins run from
-2006\,Q1, giving 72 to 79 forecasts per region and horizon.
+2000\,Q1: Austria, Belgium, Germany, Greece, Spain, France, Ireland, Italy, the
+Netherlands and Portugal. The financial block has twenty-two series per region
+--- equity and house prices, effective and dollar exchange rates, short and
+long interest rates and three spreads, sectoral balance sheets for households,
+firms and banks, four confidence balances and two global risk measures ---
+with four further national series for Austria and Germany. The macroeconomic
+block is output growth, inflation and the unemployment rate.
 
-\section{The benchmark}
+Forecast origins run from 2006\,Q1 to the end of the sample, giving 72 to 79
+forecasts per region and horizon. The dataset carries no real-time vintages; we
+return to this in Section~\ref{sec:disc}.
+
+\section{Why an estimated autoregression fails}
+\label{sec:why}
+
+\subsection{The bias and its horizon gradient}
+
+Write the target as $w_t = \mu + \rho(w_{t-1}-\mu) + \varepsilon_t$. Least
+squares estimation of $\rho$ on $T$ observations with an estimated intercept is
+biased downward, with \citet{marriott1954} and \citet{kendall1954} giving
+\begin{equation}
+\mathbb{E}[\hat\rho] - \rho \;\approx\; -\,\frac{1+3\rho}{T} .
+\label{eq:bias}
+\end{equation}
+The bias depends only weakly on $\rho$ and is of order $1/T$: at $T = 80$ it is
+close to $0.05$ throughout the range of interest. Simulation confirms the
+approximation --- at $T = 80$ the mean estimate lies within $0.015$ of
+\eqref{eq:bias} for every $\rho$ between $0.90$ and $1$.
+
+Two consequences follow. First, the distortion compounds with the horizon. An
+iterated $h$-step forecast scales the deviation $w_t - \hat\mu$ by
+$\hat\rho^{\,h}$ rather than $\rho^h$, and for a bias $b$,
+\begin{equation}
+\rho^h - (\rho-b)^h \;\approx\; h\,\rho^{h-1} b ,
+\end{equation}
+so the attenuation grows roughly linearly in $h$ before geometric decay takes
+over. At $\rho = 0.99$ and $T = 80$ the implied attenuation of an eight-step
+forecast is about 40\% of its correct magnitude.
+
+Second, the random walk's error runs the other way and does not depend on $T$.
+Imposing a unit root scales the deviation by $1$ rather than $\rho^h$, an error
+of $1-\rho^h$, and costs nothing to estimate. Comparing the two at $h = 1$, the
+estimated autoregression is the better benchmark only when
+\begin{equation}
+1-\rho \;>\; \frac{1+3\rho}{T} ,
+\label{eq:crossover}
+\end{equation}
+which at $T = 80$ places the crossover at $\rho \approx 0.95$. Below it the
+estimation bias is the smaller of the two errors and the autoregression should
+win; above it the random walk should. At longer horizons the comparison turns
+on $h\rho^{h-1}b$ against $1-\rho^h$, which for persistent targets tilts
+further toward the random walk.
+
+\subsection{Monte Carlo evidence}
+
+Expression \eqref{eq:crossover} concerns a benchmark in isolation. What matters
+for measurement is what it does to a predictor evaluated against that
+benchmark, and for that we need a design in which the predictor's true value is
+known. We simulate
+\begin{equation}
+x_t = \phi x_{t-1} + \eta_t, \qquad
+w_t = \rho w_{t-1} + \theta x_{t-1} + \varepsilon_t,
+\end{equation}
+with $\eta_t, \varepsilon_t$ standard normal and independent, $\theta = 0.3$
+and $T = 80$. Because $x_{t-1}$ enters the target directly, the predictor has
+genuine predictive content at every horizon and every $\rho$: anything the
+benchmark does wrong below is the benchmark's doing and not a missing signal.
+We set $\phi = 0.4$ so that the first-order autocorrelation of $w_t$ stays
+within $0.02$ of $\rho$; with a more persistent predictor, $x$ feeds its own
+autocorrelation into $w$ and $\rho$ ceases to describe the target's
+persistence. The four forecasts are formed exactly as in Section~2. Accuracy
+results use 6{,}000 replications; the rejection frequencies in
+Table~\ref{tab:siminf} use 500 replications of a full sequence of 79 origins,
+so that each Clark--West statistic is computed as it is in the empirical
+exercise.
+
+\begin{table}[htbp]
+\centering
+\caption{Simulation: persistence, the benchmark, and the measured value of a predictor}
+\label{tab:sim}
+\begin{tabular}{lrrrrcrrrr}
+\toprule
+& \multicolumn{4}{c}{Panel A: AR $\div$ random walk} & &
+  \multicolumn{4}{c}{Panel B: predictor $\div$ best benchmark} \\
+\cmidrule(lr){2-5} \cmidrule(lr){7-10}
+$\rho$ & $h{=}1$ & $h{=}2$ & $h{=}4$ & $h{=}8$ & & $h{=}1$ & $h{=}2$ & $h{=}4$ & $h{=}8$ \\
+\midrule
+0.80 & 0.966 & 0.932 & 0.889 & 0.838 & & 0.956 & 0.945 & 0.970 & 0.985 \\
+0.90 & 0.992 & 0.991 & 0.989 & 0.970 & & 0.953 & 0.953 & 0.957 & 0.984 \\
+0.95 & 1.006 & 1.016 & 1.032 & 1.067 & & 0.961 & 0.969 & 0.997 & 1.037 \\
+0.97 & 1.012 & 1.030 & 1.051 & 1.123 & & 0.969 & 0.988 & 1.004 & 1.095 \\
+0.99 & 1.023 & 1.036 & 1.074 & 1.175 & & 0.978 & 0.980 & 1.035 & 1.142 \\
+\bottomrule
+\end{tabular}
+
+\vspace{0.5em}
+\begin{minipage}{0.95\textwidth}
+\footnotesize \textit{Notes.} 6{,}000 replications, $T = 80$, path target. The
+first-order autocorrelation of $w_t$ is $0.82$, $0.91$, $0.96$, $0.97$ and
+$0.99$ in the five rows. Panel A divides the root mean squared error of the
+estimated own-lag regression by that of a random walk; Panel B divides the
+predictor's by the best of the recursive mean, the random walk and the own-lag
+regression.
+\end{minipage}
+\end{table}
+
+Panel A of Table~\ref{tab:sim} reproduces the crossover. At $\rho = 0.80$ and
+$0.90$ the estimated autoregression is the better benchmark at every horizon;
+from $\rho = 0.95$ the random walk overtakes it and its margin widens with $h$,
+as \eqref{eq:crossover} and the horizon gradient predict.
+
+Panel B carries the consequence. Against the estimated autoregression the
+predictor improves on the benchmark by between one and six per cent at every
+persistence and every horizon --- correctly, since it is informative by
+construction. Against the best of the three benchmarks that advantage survives
+at short horizons and disappears at long ones once $\rho$ passes the crossover:
+at $\rho = 0.99$ the predictor loses by 14\% at two years. Nothing about the
+predictor changes across the rows. Only the target's persistence does, and with
+it the identity of the benchmark.
+
+\begin{table}[htbp]
+\centering
+\caption{Simulation: Clark--West rejection frequencies}
+\label{tab:siminf}
+\begin{tabular}{lrrrrcrrrr}
+\toprule
+& \multicolumn{4}{c}{vs.\ own-lag regression} & &
+  \multicolumn{4}{c}{vs.\ random walk} \\
+\cmidrule(lr){2-5} \cmidrule(lr){7-10}
+$\rho$ & $h{=}1$ & $h{=}2$ & $h{=}4$ & $h{=}8$ & & $h{=}1$ & $h{=}2$ & $h{=}4$ & $h{=}8$ \\
+\midrule
+0.80 & 0.846 & 0.838 & 0.654 & 0.466 & & 1.000 & 0.994 & 0.998 & 0.994 \\
+0.90 & 0.850 & 0.818 & 0.674 & 0.460 & & 0.946 & 0.954 & 0.896 & 0.896 \\
+0.95 & 0.818 & 0.806 & 0.692 & 0.452 & & 0.872 & 0.806 & 0.762 & 0.598 \\
+0.97 & 0.858 & 0.804 & 0.686 & 0.512 & & 0.826 & 0.742 & 0.594 & 0.494 \\
+0.99 & 0.866 & 0.848 & 0.694 & 0.470 & & 0.788 & 0.728 & 0.502 & 0.308 \\
+\bottomrule
+\end{tabular}
+
+\vspace{0.5em}
+\begin{minipage}{0.95\textwidth}
+\footnotesize \textit{Notes.} Share of 500 replications in which the
+Clark--West statistic exceeds $1.645$. Each replication generates 79 origins
+and the statistic is computed over them as in the empirical exercise.
+\end{minipage}
+\end{table}
+
+Table~\ref{tab:siminf} addresses the obvious objection that the Clark--West
+test should have caught this. It should not, and does not, because it answers a
+different question. Read the left-hand block down a column: at two years the
+rejection frequency against the estimated autoregression is $0.47$, $0.46$,
+$0.45$, $0.51$, $0.47$ --- essentially flat in $\rho$ --- while over the same
+rows Panel B of Table~\ref{tab:sim} moves from $0.985$ to $1.142$, from a
+comfortable win to a substantial loss. The test against the autoregression is
+uninformative about whether the predictor is worth using, because it is a test
+of whether the predictor enters that regression, and it does. The right-hand
+block behaves as one would want a test to behave, its rejection frequency
+falling with persistence and horizon in step with the accuracy comparison.
+
+\section{Results}
+
+\subsection{Which benchmark}
 
 Table~\ref{tab:bench} reports the ratio of the own-lag regression's root mean
-squared error to the random walk's. The regression is worse everywhere except
-Austria, and the gap widens with the horizon: a median of 1.04 at one quarter
-and 1.33 at two years, reaching 2.62 for Ireland. The mechanism is the one
-described in the introduction, and Austria is the exception that confirms it,
-being the one region whose unemployment rate mean-reverts over this sample
-rather than drifting.
+squared error to the random walk's on the euro-area panel. The regression is
+worse in ten of eleven regions, and the gap widens with the horizon: a median
+of $1.04$ at one quarter and $1.33$ at two years, reaching $2.62$ for Ireland.
+Austria is the exception at every horizon, and it is the exception the theory
+predicts --- the one unemployment rate in the panel that mean-reverts over this
+sample rather than drifting, and so the one region below the crossover in
+\eqref{eq:crossover}.
 
 \begin{table}[htbp]
 \centering
@@ -174,92 +398,18 @@ Median      & 1.04 & 1.09 & 1.20 & 1.33 \\
 \begin{minipage}{0.9\textwidth}
 \footnotesize \textit{Notes.} Values above one mean the random walk forecasts
 the path of the unemployment rate more accurately than a recursively estimated
-own-lag regression. Origins from 2006\,Q1.
+own-lag regression. Origins from 2006\,Q1; 72--79 forecasts per cell.
 \end{minipage}
 \end{table}
 
-\section{Why the benchmark fails}
-\label{sec:sim}
+\subsection{The index against the best benchmark}
 
-Table~\ref{tab:bench} is a pattern, not an explanation. This section supplies
-one with a simulation calibrated to the paper's own design, in which the
-predictor is informative at every horizon by construction, so that anything the
-benchmark does wrong is the benchmark's doing.
-
-The data generating process is
-\begin{equation}
-x_t = \phi x_{t-1} + \eta_t, \qquad
-u_t = \rho u_{t-1} + \theta x_{t-1} + \varepsilon_t,
-\end{equation}
-with $\phi = 0.8$, $\theta = 0.3$, and $\eta_t, \varepsilon_t$ standard normal
-and independent. The estimation sample is $T = 80$ quarters, the length of the
-panel's, and the four forecasts of the path target are formed exactly as in
-Section~2. Results are over 4{,}000 replications.
-
-Two things happen as $\rho$ approaches one. The estimated own-lag coefficient
-falls further below its population value, and the shortfall grows with the
-horizon: at $\rho = 0.99$ and $h = 8$ the population projection coefficient is
-$0.973$ and the average estimate is $0.789$. And the cost of that shortfall,
-measured against a random walk, rises --- Panel A of Table~\ref{tab:sim}. At
-$\rho = 0.90$ the estimated autoregression is at worst four per cent behind a
-random walk; at $\rho = 0.99$ it is twenty-two per cent behind at two years.
-This is the pattern of Table~\ref{tab:bench}, and the parameter that drives it
-is the persistence of the target.
-
-Panel B shows the consequence for the predictor. Against the estimated
-autoregression the index improves forecasts by between eight and nineteen per
-cent everywhere, at every persistence and every horizon, exactly as it does in
-the data. Against the best of the three benchmarks that advantage survives at
-short horizons and disappears at two years once $\rho$ reaches $0.97$. Nothing
-about the predictor changes across the columns of Panel B; only the benchmark
-does.
-
-\begin{table}[htbp]
-\centering
-\caption{Simulation: persistence, the benchmark, and the apparent value of a predictor}
-\label{tab:sim}
-\begin{tabular}{lrrrrcrrrr}
-\toprule
-& \multicolumn{4}{c}{Panel A: AR $\div$ random walk} & &
-  \multicolumn{4}{c}{Panel B: index $\div$ best benchmark} \\
-\cmidrule(lr){2-5} \cmidrule(lr){7-10}
-$\rho$ & $h{=}1$ & $h{=}2$ & $h{=}4$ & $h{=}8$ & & $h{=}1$ & $h{=}2$ & $h{=}4$ & $h{=}8$ \\
-\midrule
-0.90 & 1.011 & 1.009 & 1.024 & 1.043 & & 0.918 & 0.882 & 0.873 & 0.905 \\
-0.95 & 1.015 & 1.036 & 1.072 & 1.151 & & 0.907 & 0.906 & 0.882 & 0.950 \\
-0.97 & 1.023 & 1.041 & 1.082 & 1.173 & & 0.922 & 0.894 & 0.904 & 0.992 \\
-0.99 & 1.027 & 1.037 & 1.098 & 1.224 & & 0.922 & 0.906 & 0.893 & 1.008 \\
-1.00 & 1.015 & 1.039 & 1.087 & 1.216 & & 0.926 & 0.889 & 0.891 & 1.005 \\
-\bottomrule
-\end{tabular}
-
-\vspace{0.5em}
-\begin{minipage}{0.95\textwidth}
-\footnotesize \textit{Notes.} 4{,}000 replications, $T = 80$, path target. The
-predictor enters the data generating process with $\theta = 0.3$ and therefore
-carries genuine predictive content at every horizon and every $\rho$. Panel A
-reports the root mean squared error of the estimated own-lag regression divided
-by that of a random walk; Panel B the index regression divided by the best of
-the recursive mean, the random walk and the own-lag regression.
-\end{minipage}
-\end{table}
-
-The simulation understates what the panel shows --- its two-year ratios reach
-$1.008$ where the data reach $1.316$ --- which is expected, since a stationary
-first-order process with a constant coefficient is a generous description of an
-unemployment rate over 2006--2025. The point is the comparative static rather
-than the level: the more persistent the target, the more an estimated
-autoregression flatters whatever is added to it, and the less that flattery
-means.
-
-\section{Results}
-
-Table~\ref{tab:main} scores the index against whichever of the three
-benchmarks did best in each cell. The index wins at one quarter in ten of
-eleven regions and at two quarters in nine, with Clark--West statistics
-clearing the critical value in eleven and ten. At four quarters it is close to
-a coin flip. At two years it loses in every region, by 32\% of root mean
-squared error on average, and the Clark--West statistic clears in only three.
+Table~\ref{tab:main} scores the index against whichever of the three benchmarks
+did best in each cell. It wins at one quarter in ten of eleven regions and at
+two quarters in nine, with Clark--West statistics clearing the critical value
+in eleven and ten. At four quarters the picture is mixed: six of eleven ratios
+fall below one but the mean is above it, pulled up by Ireland. At two years the
+index loses in every region, by 32\% of root mean squared error on average.
 
 \begin{table}[htbp]
 \centering
@@ -299,11 +449,13 @@ own-lag regression is, and Austria at $h = 8$, where the recursive mean is.
 \end{minipage}
 \end{table}
 
-Table~\ref{tab:contrast} restates the same forecasts against the own-lag
-regression alone. The picture is unrecognisable: the index now wins at every
-horizon in almost every region, and the two-year row --- where the honest
-comparison shows a loss in eleven of eleven --- shows a win in ten of eleven and
-a mean reduction in error of 13\%.
+\subsection{The same forecasts, scored against the autoregression}
+
+Table~\ref{tab:contrast} restates the identical forecasts against the own-lag
+regression alone, and adds the panel statistic. The index now wins at every
+horizon in almost every region, and the two-year row --- a loss in eleven of
+eleven under the honest comparison --- becomes a win in ten of eleven with a
+mean reduction in error of 13\%.
 
 \begin{table}[htbp]
 \centering
@@ -315,66 +467,116 @@ a mean reduction in error of 13\%.
 \cmidrule(lr){2-5} \cmidrule(lr){7-10}
 & $h{=}1$ & $h{=}2$ & $h{=}4$ & $h{=}8$ & & $h{=}1$ & $h{=}2$ & $h{=}4$ & $h{=}8$ \\
 \midrule
-Mean ratio      & 0.864 & 0.839 & 0.832 & 0.872 & & 0.899 & 0.933 & 1.052 & 1.316 \\
-Ratio $<1$      & 11 & 11 & 11 & 10 & & 10 & 9 & 6 & 0 \\
-CW $> 1.645$    & 11 & 10 & 10 & 10 & & 11 & 10 & 8 & 3 \\
+Mean ratio       & 0.864 & 0.839 & 0.832 & 0.872 & & 0.899 & 0.933 & 1.052 & 1.316 \\
+Ratio $<1$       & 11 & 11 & 11 & 10 & & 10 & 9 & 6 & 0 \\
+CW $> 1.645$     & 11 & 10 & 10 & 10 & & 11 & 10 & 8 & 3 \\
+Panel CW         & 5.60 & 4.71 & 3.46 & 2.27 & & 4.01 & 3.16 & 2.31 & $-$1.03 \\
 \bottomrule
 \end{tabular}
+
+\vspace{0.5em}
+\begin{minipage}{0.95\textwidth}
+\footnotesize \textit{Notes.} ``Panel CW'' averages the adjusted loss
+differentials across the eleven regions at each origin and tests the average
+with a Bartlett kernel of $h-1$ lags. In the right-hand block it is computed
+against the random walk, the best benchmark in ten of eleven regions. The
+average pairwise cross-sectional correlation of the differentials is $0.35$,
+$0.35$, $0.25$ and $0.04$ at $h = 1, 2, 4, 8$.
+\end{minipage}
 \end{table}
+
+The four-quarter cell deserves a word, because the ratio and the statistic
+point different ways: the mean ratio is $1.052$ while the panel statistic is
+$2.31$. They answer different questions, as \citet{clark2007} intend. The
+statistic asks whether the index belongs in the population regression; the
+ratio reports what a forecaster obtained after paying the cost of estimating
+its coefficient. At a year the index's information is real but too small to
+cover that cost in a sample of eighty quarters. We read the year horizon as
+genuinely ambiguous and two years as clearly negative on both criteria.
 
 \section{Robustness}
 \label{sec:robust}
 
 \textbf{Target definition.} Scoring the single quarter $t+h$ rather than the
-path over $t+1,\dots,t+h$ makes the index look worse at every horizon beyond
-the first: at four quarters it wins in three regions rather than six, and the
-mean ratio is 1.106 rather than 1.052; at two years, 1.461 rather than 1.316.
-The path target is therefore the conservative choice for the negative result
-reported above.
+path makes the index look worse at every horizon beyond the first: at four
+quarters it wins in three regions rather than six, with a mean ratio of $1.106$
+against $1.052$; at two years, $1.461$ against $1.316$. The path target is the
+conservative choice for the negative result.
 
 \textbf{Other target variables.} For output growth the recursive mean is the
-best benchmark in all eleven regions and the index beats it in none, at any
-horizon, with mean ratios between 1.20 and 1.65. For inflation the index wins
-in six or seven regions with mean ratios close to one and Clark--West
-statistics clearing in at most five. Neither target shows the short-horizon
+best benchmark in all eleven regions and the index beats it in none at any
+horizon, with mean ratios between $1.20$ and $1.65$. For inflation the index
+wins in six or seven regions with mean ratios close to one and Clark--West
+statistics clearing in at most five. Neither variable shows the short-horizon
 result that unemployment does.
 
 \textbf{Number of factors.} Extracting a second factor while continuing to use
-only the first as a predictor changes the counts in Table~\ref{tab:main} not at
-all and the mean ratios by less than a hundredth.
+only the first as a predictor leaves the counts in Table~\ref{tab:main}
+unchanged and moves the mean ratios by less than a hundredth.
+
+\textbf{Wider autoregressions.} Replacing the AR(1) benchmark with an AR(2) or
+AR(4) makes the benchmark worse, not better --- the same disease rather than a
+cure, since it estimates more coefficients on a near-unit-root series in a
+short sample. Imposing the unit root is what helps.
 
 \textbf{A longer sample.} Austria is the one region for which national sources
 allow the panel to be extended, to 1993, giving 100 to 107 origins. The
-short-horizon result survives, and so does the fact that Austria is atypical:
-there the own-lag regression is the best of the three benchmarks at every
-horizon, and the index beats it narrowly at two years as well.
+short-horizon result survives, and so does Austria's atypicality: there the
+own-lag regression is the best of the three benchmarks at every horizon,
+including two years, where the index beats it narrowly.
 
-\section{Limitations}
+\section{Discussion}
+\label{sec:disc}
+
+Three qualifications bear on how these numbers should be read.
 
 The benchmark set is three simple rules. A properly specified univariate model
-of each country's unemployment rate would be harder to beat than any of them,
-and the short-horizon result should be read as a comparison with a random walk
-rather than with the state of the art. The dataset contains no real-time
-vintages, so the macro variables are revised figures throughout; this affects
-all four forecasts equally but inflates the level of accuracy reported. Finally,
-the eleven regions share a monetary policy and much of a business cycle, so the
-counts should be read as describing a correlated panel rather than eleven
-independent tests.
+of each country's unemployment rate --- one that selects its own order, tests
+for a unit root explicitly, or shrinks toward one --- would be harder to beat
+than any of them, and our short-horizon result should be read as a comparison
+against a random walk rather than against the state of the art. We would expect
+the qualitative conclusion to survive, since the failure we document is
+specific to estimating a coefficient that ought to be imposed, but we have not
+shown it.
+
+The data are not real time. EA-MD-QD contains no vintages, so the macroeconomic
+variables are revised figures throughout and a genuine real-time forecaster
+would have had worse inputs than these regressions were given. This affects all
+four forecasts in the same direction and is unlikely to drive the comparison
+between them, but it inflates the level of accuracy reported.
+
+Finally, we test four horizons in each of eleven regions, and report both
+per-region counts and a panel statistic per horizon. We do not implement a
+uniform multi-horizon test in the sense of \citet{quaedvlieg2021}, which would
+control size across the horizon set jointly. Given that the panel statistics
+range from $4.01$ to $-1.03$ and change sign between horizons, we do not expect
+such a test to alter the conclusion, but it would sharpen the statement about
+the four-quarter cell where our two criteria disagree.
 
 \section{Conclusion}
 
 A financial conditions index for a euro-area country carries information about
 unemployment one and two quarters ahead that survives comparison with a random
-walk, in ten and nine of eleven regions. At two years it survives nothing: the
-index loses to a random walk in every region, while appearing to win in ten of
-eleven when scored against an autoregressive benchmark.
+walk in ten and nine of eleven regions, with panel Clark--West statistics of
+$4.0$ and $3.2$. At two years it survives nothing: the index loses to a random
+walk in every region and the panel statistic is $-1.0$, while the same
+forecasts appear to win in ten of eleven regions when scored against a
+recursively estimated autoregression.
+
+The mechanism is not specific to financial conditions indices, to this index or
+to this panel. It applies whenever a persistent target is forecast from a short
+sample and the benchmark estimates a coefficient that could have been imposed.
+Our simulations show that a predictor with genuine content at every horizon
+still registers as valuable against such a benchmark at persistences where a
+forecaster would be better served by a random walk, and that the Clark--West
+test correctly reports the predictor's presence in the regression throughout.
 
 The practical implication is a reporting standard rather than a new method.
-Evaluations of financial conditions indices at horizons of a year or more
-should include a benchmark that imposes the persistence of the target instead
-of estimating it, and should say which benchmark the reported ratios are
-against. On this evidence the difference between those two choices is larger
-than the difference between having an index and not having one.
+Evaluations at horizons of a year or more should include a benchmark that
+imposes the persistence of the target, and should state which benchmark the
+reported ratios are against. On this evidence the difference between those two
+choices is larger than the difference between having an index and not having
+one.
 
 \begin{thebibliography}{99}
 
@@ -387,14 +589,34 @@ countries datasets for macroeconomic research.
 Clark, T.E., West, K.D., 2007. Approximately normal tests for equal predictive
 accuracy in nested models. Journal of Econometrics 138, 291--311.
 
+\bibitem[Diebold and Mariano(1995)]{diebold1995}
+Diebold, F.X., Mariano, R.S., 1995. Comparing predictive accuracy. Journal of
+Business \& Economic Statistics 13, 253--263.
+
 \bibitem[Hatzius et al.(2010)]{hatzius2010}
 Hatzius, J., Hooper, P., Mishkin, F.S., Schoenholtz, K.L., Watson, M.W., 2010.
 Financial conditions indexes: a fresh look after the financial crisis. NBER
 Working Paper 16150.
 
+\bibitem[Kendall(1954)]{kendall1954}
+Kendall, M.G., 1954. Note on bias in the estimation of autocorrelation.
+Biometrika 41, 403--404.
+
 \bibitem[Koop and Korobilis(2014)]{koop2014}
 Koop, G., Korobilis, D., 2014. A new index of financial conditions. European
 Economic Review 71, 101--116.
+
+\bibitem[Marriott and Pope(1954)]{marriott1954}
+Marriott, F.H.C., Pope, J.A., 1954. Bias in the estimation of autocorrelations.
+Biometrika 41, 390--402.
+
+\bibitem[Quaedvlieg(2021)]{quaedvlieg2021}
+Quaedvlieg, R., 2021. Multi-horizon forecast comparison. Journal of Business \&
+Economic Statistics 39, 40--53.
+
+\bibitem[Stock and Watson(2002)]{stock2002}
+Stock, J.H., Watson, M.W., 2002. Macroeconomic forecasting using diffusion
+indexes. Journal of Business \& Economic Statistics 20, 147--162.
 
 \end{thebibliography}
 

@@ -1,83 +1,124 @@
-# Monte Carlo for the mechanism: a near-unit-root target, an estimation sample
-# the length of the paper's, and the same four forecasts.
+# Consolidated Monte Carlo for the manuscript.
 #
 #   x_t = phi x_{t-1} + eta_t                      the "index"
 #   u_t = rho u_{t-1} + theta x_{t-1} + eps_t      the target
 #
-# theta > 0 gives the index genuine predictive content at every horizon, so any
-# failure below is the benchmark's, not a missing signal.
+# phi = 0.4 keeps the first-order autocorrelation of u within about 0.02 of
+# rho; with a more persistent predictor, x feeds its own autocorrelation into u
+# and rho stops describing the target's persistence. theta = 0.3 gives the
+# predictor genuine content at every horizon, so anything the benchmark does
+# wrong below is the benchmark's doing.
 
 set.seed(20260911)
 
-fast_ols <- function(X, y) {
-  qr.solve(crossprod(X), crossprod(X, y))
+PHI <- 0.4; THETA <- 0.3; TT <- 80
+RHOS <- c(0.80, 0.90, 0.95, 0.97, 0.99)
+HS <- c(1, 2, 4, 8)
+
+hac <- function(z, lag) {
+  n <- length(z); z <- z - mean(z); v <- sum(z^2) / n
+  for (l in seq_len(lag)) v <- v + 2*(1-l/(lag+1))*sum(z[(l+1):n]*z[1:(n-l)])/n
+  v
+}
+draw <- function(rho, n, burn = 200) {
+  N <- n + burn
+  eta <- rnorm(N); eps <- rnorm(N)
+  x <- stats::filter(eta, PHI, method = "recursive")
+  u <- stats::filter(eps + THETA * c(0, x[-N]), rho, method = "recursive")
+  list(x = as.numeric(x)[(burn + 1):N], u = as.numeric(u)[(burn + 1):N])
+}
+# Trailing mean of the h-step lead, computed once for the whole series.
+lead_of <- function(u, h) {
+  cs <- cumsum(c(0, u))
+  n <- length(u)
+  out <- rep(NA_real_, n)
+  idx <- seq_len(n - h)
+  out[idx] <- (cs[idx + h + 1] - cs[idx + 1]) / h
+  out
+}
+# OLS on an intercept plus 1 or 2 regressors, returning the fitted value at
+# the supplied point. Solved directly; the systems are 2x2 and 3x3.
+fit_predict <- function(y, Z, z_new) {
+  X <- cbind(1, Z)
+  b <- qr.solve(crossprod(X), crossprod(X, y))
+  as.numeric(c(1, z_new) %*% b)
 }
 
-one_rep <- function(rho, theta, h, tt = 80, phi = 0.8, burn = 200) {
-  n <- burn + tt + h + 1
-  eta <- rnorm(n); eps <- rnorm(n)
-  x <- numeric(n); u <- numeric(n)
-  for (i in 2:n) {
-    x[i] <- phi * x[i - 1] + eta[i]
-    u[i] <- rho * u[i - 1] + theta * x[i - 1] + eps[i]
+## 1. Population quantities --------------------------------------------------
+cat("population quantities ...\n")
+pop <- do.call(rbind, lapply(RHOS, function(rho) {
+  d <- draw(rho, 2e5)
+  ac <- as.numeric(acf(d$u, lag.max = 1, plot = FALSE)$acf[2])
+  b <- vapply(HS, function(h) {
+    L <- lead_of(d$u, h); k <- which(!is.na(L))
+    as.numeric(coef(lm(L[k] ~ d$u[k]))[2]) }, numeric(1))
+  data.frame(rho = rho, eff_rho = ac, t(setNames(round(b, 3), paste0("pop", HS))))
+}))
+
+## 2. Accuracy ---------------------------------------------------------------
+cat("accuracy grid ...\n")
+one_rep <- function(rho, h) {
+  d <- draw(rho, TT + h + 1); u <- d$u; x <- d$x
+  L <- lead_of(u, h); k <- seq_len(TT - h)
+  y <- L[k]; own <- u[k]; fci <- x[k]
+  c(actual = mean(u[(TT + 1):(TT + h)]), mean = mean(y), rw = u[TT],
+    ar = fit_predict(y, own, u[TT]),
+    fci = fit_predict(y, cbind(own, fci), c(u[TT], x[TT])),
+    beta = as.numeric(qr.solve(crossprod(cbind(1, own)),
+                               crossprod(cbind(1, own), y))[2]))
+}
+acc <- do.call(rbind, lapply(RHOS, function(rho) do.call(rbind, lapply(HS, function(h) {
+  m <- t(vapply(seq_len(6000), function(i) one_rep(rho, h), numeric(6)))
+  r <- function(col) sqrt(mean((m[, "actual"] - m[, col])^2))
+  data.frame(rho = rho, h = h, beta_hat = mean(m[, "beta"]),
+             ar_over_rw = r("ar") / r("rw"),
+             fci_over_ar = r("fci") / r("ar"),
+             fci_over_best = r("fci") / min(r("mean"), r("rw"), r("ar")))
+}))))
+
+## 3. Inference --------------------------------------------------------------
+cat("inference grid ...\n")
+one_path <- function(rho, h, n_org = 79) {
+  d <- draw(rho, TT + n_org + h + 1); u <- d$u; x <- d$x
+  L <- lead_of(u, h)
+  out <- matrix(NA_real_, n_org, 4,
+                dimnames = list(NULL, c("actual", "rw", "ar", "fci")))
+  for (j in seq_len(n_org)) {
+    o <- TT + j - 1
+    k <- seq_len(o - h)
+    y <- L[k]; own <- u[k]; fci <- x[k]
+    out[j, ] <- c(mean(u[(o + 1):(o + h)]), u[o],
+                  fit_predict(y, own, u[o]),
+                  fit_predict(y, cbind(own, fci), c(u[o], x[o])))
   }
-  x <- x[(burn + 1):n]; u <- u[(burn + 1):n]
-
-  # Estimation sample: origins 1..tt, path target over the next h quarters.
-  lead <- vapply(seq_len(tt - h), function(t) mean(u[(t + 1):(t + h)]), numeric(1))
-  own <- u[seq_len(tt - h)]
-  fci <- x[seq_len(tt - h)]
-
-  origin <- tt
-  realised <- mean(u[(origin + 1):(origin + h)])
-
-  X1 <- cbind(1, own)
-  X2 <- cbind(1, own, fci)
-  b1 <- fast_ols(X1, lead)
-  b2 <- fast_ols(X2, lead)
-
-  c(mean = mean(lead),
-    rw = u[origin],
-    ar = as.numeric(c(1, u[origin]) %*% b1),
-    fci = as.numeric(c(1, u[origin], x[origin]) %*% b2),
-    actual = realised,
-    beta = b1[2])
+  out
 }
-
-run <- function(rho, theta, h, reps = 4000) {
-  m <- t(vapply(seq_len(reps), function(i) one_rep(rho, theta, h), numeric(6)))
-  rmse <- function(col) sqrt(mean((m[, "actual"] - m[, col])^2))
-  c(rho = rho, h = h,
-    beta_hat = mean(m[, "beta"]),
-    rmse_mean = rmse("mean"), rmse_rw = rmse("rw"),
-    rmse_ar = rmse("ar"), rmse_fci = rmse("fci"),
-    ar_over_rw = rmse("ar") / rmse("rw"),
-    fci_over_ar = rmse("fci") / rmse("ar"),
-    fci_over_best = rmse("fci") / min(rmse("mean"), rmse("rw"), rmse("ar")))
+cw <- function(m, bench, h) {
+  eb <- m[, "actual"] - m[, bench]; ef <- m[, "actual"] - m[, "fci"]
+  adj <- eb^2 - (ef^2 - (m[, bench] - m[, "fci"])^2)
+  mean(adj) / sqrt(hac(adj, max(h - 1, 0)) / length(adj))
 }
+inf <- do.call(rbind, lapply(RHOS, function(rho) do.call(rbind, lapply(HS, function(h) {
+  z <- t(vapply(seq_len(500), function(i) {
+    m <- one_path(rho, h); c(cw(m, "ar", h), cw(m, "rw", h)) }, numeric(2)))
+  data.frame(rho = rho, h = h,
+             rej_ar = mean(z[, 1] > 1.645), rej_rw = mean(z[, 2] > 1.645))
+}))))
 
-grid <- expand.grid(rho = c(0.90, 0.95, 0.97, 0.99, 1.00), h = c(1, 2, 4, 8))
-out <- as.data.frame(t(mapply(function(r, h) run(r, h, theta = 0.30),
-                              grid$rho, grid$h)))
-saveRDS(out, "sim.rds")
+saveRDS(list(pop = pop, acc = acc, inf = inf), "sim4.rds")
 
-cat("theta = 0.30, phi = 0.8, T = 80, 4000 replications\n\n")
-cat("=== beta_hat: the estimated own-lag coefficient (truth is rho^h for h=1) ===\n")
-b <- reshape(out[, c("rho", "h", "beta_hat")], idvar = "rho", timevar = "h",
-             direction = "wide")
-print(round(b, 3), row.names = FALSE)
-
-cat("\n=== AR benchmark relative to a random walk ===\n")
-a <- reshape(out[, c("rho", "h", "ar_over_rw")], idvar = "rho", timevar = "h",
-             direction = "wide")
-print(round(a, 3), row.names = FALSE)
-
-cat("\n=== index model relative to the AR benchmark ===\n")
-f <- reshape(out[, c("rho", "h", "fci_over_ar")], idvar = "rho", timevar = "h",
-             direction = "wide")
-print(round(f, 3), row.names = FALSE)
-
-cat("\n=== index model relative to the BEST benchmark ===\n")
-g <- reshape(out[, c("rho", "h", "fci_over_best")], idvar = "rho", timevar = "h",
-             direction = "wide")
-print(round(g, 3), row.names = FALSE)
+wide <- function(d, col) {
+  w <- reshape(d[, c("rho", "h", col)], idvar = "rho", timevar = "h",
+               direction = "wide")
+  colnames(w) <- c("rho", paste0("h=", HS)); w
+}
+cat("\nphi =", PHI, " theta =", THETA, " T =", TT, "\n")
+cat("\n=== effective persistence and population projection coefficient ===\n")
+print(pop, row.names = FALSE)
+for (v in c("beta_hat", "ar_over_rw", "fci_over_ar", "fci_over_best")) {
+  cat("\n===", v, "===\n"); print(round(wide(acc, v), 3), row.names = FALSE)
+}
+cat("\n=== CW rejection rate vs own-lag regression ===\n")
+print(round(wide(inf, "rej_ar"), 3), row.names = FALSE)
+cat("\n=== CW rejection rate vs random walk ===\n")
+print(round(wide(inf, "rej_rw"), 3), row.names = FALSE)
